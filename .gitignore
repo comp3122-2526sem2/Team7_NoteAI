@@ -1,0 +1,3 @@
+anythingllm/storage/*
+anythingllm/.env
+backend/.env

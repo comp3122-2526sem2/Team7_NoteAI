@@ -1,0 +1,56 @@
+services:
+  noteai-anythingllm:
+    image: mintplexlabs/anythingllm:latest
+    container_name: noteai-anythingllm
+    ports:
+      - "3001:3001"
+    environment:
+      - STORAGE_DIR=/app/server/storage
+      - JWT_SECRET="your_secret_here" # Change this for production
+    volumes:
+      - ./anythingllm/storage:/app/server/storage
+      - ./anythingllm/.env:/app/server/.env
+    restart: always
+  postgres:
+    build:
+      context: ./postgresql
+      dockerfile: Dockerfile
+    container_name: noteai_postgres
+    restart: unless-stopped
+    command: -c 'max_connections=1000'
+    environment:
+      POSTGRES_USER: noteai
+      POSTGRES_PASSWORD: noteai
+    hostname: noteai_postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - noteai_network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: noteai_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: noteai@noteai.com
+      PGADMIN_DEFAULT_PASSWORD: noteai
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+        - noteai_network
+
+networks:
+  noteai_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  pgadmin_data:
