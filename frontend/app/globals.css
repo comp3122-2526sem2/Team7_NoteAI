@@ -47,6 +47,12 @@
   color: #636c76;
   margin-bottom: 0.75em;
 }
+/* MDXEditor — toolbar dropdowns (Radix UI portals) must sit above antd
+   Modal's stacking context (z-index ~1000). */
+[data-radix-popper-content-wrapper] {
+  z-index: 9999 !important;
+}
+
 .markdown-body table {
   border-collapse: collapse;
   width: 100%;

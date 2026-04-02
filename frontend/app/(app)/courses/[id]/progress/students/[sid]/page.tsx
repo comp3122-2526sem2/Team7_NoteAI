@@ -2,7 +2,7 @@
 
 import { use } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Card, Divider, Table, Typography, message } from "antd";
+import { App, Button, Card, Divider, Table, Typography } from "antd";
 import { ThunderboltOutlined } from "@ant-design/icons";
 import { progressApi } from "@/lib/api";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
@@ -17,6 +17,7 @@ export default function StudentProgressPage({
   params: Promise<{ id: string; sid: string }>;
 }) {
   const { id: courseId, sid: studentId } = use(params);
+  const { message } = App.useApp();
   const qc = useQueryClient();
 
   const { data: progress, isLoading } = useQuery({

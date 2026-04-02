@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Button, Card, Form, Input, Select, Typography, message } from "antd";
+import { App, Button, Card, Form, Input, Select, Typography } from "antd";
 import { authApi } from "@/lib/api";
 
 const { Title, Text } = Typography;
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
   const role = Form.useWatch("role", form);

@@ -4,8 +4,8 @@ import { use, useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import {
-  Button, Drawer, Form, Input, Modal, Space, Spin, Table,
-  Typography, message,
+  App, Button, Drawer, Form, Input, Modal, Space, Spin, Table,
+  Typography,
 } from "antd";
 import {
   SaveOutlined, ThunderboltOutlined, HistoryOutlined, DownloadOutlined,
@@ -41,6 +41,7 @@ export default function LessonPlanEditorPage({
 }) {
   const { id: courseId, pid: planId } = use(params);
   const { token } = useAuthStore();
+  const { message } = App.useApp();
   const qc = useQueryClient();
 
   const { data: plan, isLoading } = useQuery({
@@ -292,6 +293,7 @@ function TopicsPanel({
   topics: Topic[];
   onRefresh: () => void;
 }) {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
   const [editId, setEditId] = useState<string | null>(null);

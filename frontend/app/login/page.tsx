@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Button, Card, Form, Input, Typography, message } from "antd";
+import { App, Button, Card, Form, Input, Typography } from "antd";
 import { LockOutlined, UserOutlined } from "@ant-design/icons";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -13,6 +13,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAuth();
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (values: { username: string; password: string }) => {

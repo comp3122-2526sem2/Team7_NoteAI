@@ -4,8 +4,8 @@ import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
-  Button, DatePicker, Form, Input, InputNumber, Modal, Select,
-  Space, Table, Typography, message,
+  App, Button, DatePicker, Form, Input, InputNumber, Modal, Select,
+  Space, Table, Typography,
 } from "antd";
 import { PlusOutlined, EyeOutlined, DeleteOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -14,16 +14,17 @@ import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { MarkdownInput } from "@/components/shared/markdown-input";
 import type { Assignment, AssignmentCreateData } from "@/lib/api";
 
 const { Title } = Typography;
-const { TextArea } = Input;
 
 const TYPES = ["quiz", "homework", "project", "exam"] as const;
 
 export default function AssignmentsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: courseId } = use(params);
   const { isTeacher } = useAuth();
+  const { message } = App.useApp();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
@@ -134,7 +135,7 @@ export default function AssignmentsPage({ params }: { params: Promise<{ id: stri
             <Input />
           </Form.Item>
           <Form.Item name="description" label="Description">
-            <TextArea rows={2} />
+            <MarkdownInput placeholder="Describe the assignment…" minHeight={140} />
           </Form.Item>
           <Space style={{ width: "100%" }} align="start">
             <Form.Item name="assignment_type" label="Type" initialValue="homework" rules={[{ required: true }]}>

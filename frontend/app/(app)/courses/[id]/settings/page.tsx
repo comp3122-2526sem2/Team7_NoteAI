@@ -1,23 +1,23 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Card, Divider, Form, Input, Space, Table, Typography, message } from "antd";
+import { App, Button, Card, Divider, Form, Input, Space, Table, Typography } from "antd";
 import { UserAddOutlined, DeleteOutlined } from "@ant-design/icons";
 import { coursesApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { MarkdownInput } from "@/components/shared/markdown-input";
 import type { User } from "@/lib/api";
 
-const { Title, Text } = Typography;
-const { TextArea } = Input;
+const { Title } = Typography;
 
 export default function CourseSettingsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { isTeacher } = useAuth();
+  const { message } = App.useApp();
   const qc = useQueryClient();
-  const [detailsForm] = Form.useForm();
   const [newStudentId, setNewStudentId] = useState("");
 
   const { data: course, isLoading } = useQuery({
@@ -30,16 +30,6 @@ export default function CourseSettingsPage({ params }: { params: Promise<{ id: s
     queryFn: () => coursesApi.listStudents(id).then((r) => r.data),
     enabled: isTeacher,
   });
-
-  useEffect(() => {
-    if (course) {
-      detailsForm.setFieldsValue({
-        name: course.name,
-        description: course.description ?? "",
-        syllabus: course.syllabus ?? "",
-      });
-    }
-  }, [course, detailsForm]);
 
   const updateMutation = useMutation({
     mutationFn: (values: { name: string; description?: string; syllabus?: string }) =>
@@ -98,15 +88,29 @@ export default function CourseSettingsPage({ params }: { params: Promise<{ id: s
       <Title level={3}>Course Settings</Title>
 
       <Card title="Details" style={{ marginBottom: 24 }}>
-        <Form form={detailsForm} layout="vertical" onFinish={(v) => updateMutation.mutate(v)}>
+        {/*
+          key={course.id} forces the Form (and MarkdownInput inside it) to
+          fully re-mount with the loaded data as initialValues, so the editor
+          receives the existing syllabus content correctly.
+        */}
+        <Form
+          key={course.id}
+          layout="vertical"
+          initialValues={{
+            name: course.name,
+            description: course.description ?? "",
+            syllabus: course.syllabus ?? "",
+          }}
+          onFinish={(v) => updateMutation.mutate(v)}
+        >
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item name="description" label="Description">
-            <TextArea rows={2} />
+            <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="syllabus" label="Syllabus (Markdown)">
-            <TextArea rows={5} />
+          <Form.Item name="syllabus" label="Syllabus">
+            <MarkdownInput placeholder="Write the course syllabus…" minHeight={240} />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" loading={updateMutation.isPending}>

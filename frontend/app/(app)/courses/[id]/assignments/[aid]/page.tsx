@@ -3,8 +3,8 @@
 import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Button, Card, Col, Divider, Form, Input, InputNumber,
-  Row, Space, Tag, Typography, message,
+  App, Button, Card, Col, Divider, Form, Input, InputNumber,
+  Row, Space, Tag, Typography,
 } from "antd";
 import { ThunderboltOutlined } from "@ant-design/icons";
 import { assignmentsApi } from "@/lib/api";
@@ -24,6 +24,7 @@ export default function AssignmentDetailPage({
 }) {
   const { id: courseId, aid: assignmentId } = use(params);
   const { isTeacher, user } = useAuth();
+  const { message } = App.useApp();
   const qc = useQueryClient();
 
   const { data: assignment, isLoading } = useQuery({

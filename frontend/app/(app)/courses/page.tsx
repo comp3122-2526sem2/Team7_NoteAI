@@ -3,17 +3,20 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Button, Card, Col, Empty, Form, Input, Modal, Row, Typography, message } from "antd";
+import { App, Button, Card, Col, Empty, Form, Input, Modal, Row, Typography } from "antd";
 import { PlusOutlined, BookOutlined } from "@ant-design/icons";
 import { coursesApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
+import { MarkdownInput } from "@/components/shared/markdown-input";
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
+
 export default function CoursesPage() {
   const { isTeacher } = useAuth();
+  const { message } = App.useApp();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
@@ -89,6 +92,8 @@ export default function CoursesPage() {
         onCancel={() => { setOpen(false); form.resetFields(); }}
         footer={null}
         destroyOnClose
+        width={780}
+        styles={{ body: { maxHeight: "75vh", overflowY: "auto", paddingBottom: 8 } }}
       >
         <Form form={form} layout="vertical" onFinish={(v) => createMutation.mutate(v)} style={{ marginTop: 16 }}>
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
@@ -97,8 +102,8 @@ export default function CoursesPage() {
           <Form.Item name="description" label="Description">
             <TextArea rows={2} />
           </Form.Item>
-          <Form.Item name="syllabus" label="Syllabus (Markdown)">
-            <TextArea rows={4} />
+          <Form.Item name="syllabus" label="Syllabus">
+            <MarkdownInput placeholder="Write the course syllabus…" minHeight={200} />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" block loading={createMutation.isPending}>

@@ -2,7 +2,7 @@
 
 import { use } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Card, Divider, Space, Spin, Tag, Typography, message } from "antd";
+import { Alert, App, Button, Card, Divider, Space, Spin, Tag, Typography } from "antd";
 import { ThunderboltOutlined } from "@ant-design/icons";
 import { documentsApi } from "@/lib/api";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
@@ -13,6 +13,7 @@ const { Title, Text } = Typography;
 
 export default function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { message } = App.useApp();
   const qc = useQueryClient();
 
   const { data: doc, isLoading } = useQuery({

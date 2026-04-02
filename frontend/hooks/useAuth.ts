@@ -15,6 +15,9 @@ export function useAuth() {
 
   const login = async (username: string, password: string) => {
     const { data } = await authApi.login(username, password);
+    // Store token in localStorage before calling /auth/me so the
+    // axios interceptor picks it up and sends the Authorization header.
+    localStorage.setItem("token", data.access_token);
     const meRes = await authApi.me();
     setAuth(meRes.data, data.access_token);
     return meRes.data;

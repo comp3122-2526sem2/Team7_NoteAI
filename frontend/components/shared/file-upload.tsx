@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Upload, Progress, message } from "antd";
+import { App, Upload, Progress } from "antd";
 import { InboxOutlined } from "@ant-design/icons";
 
 const { Dragger } = Upload;
@@ -12,6 +12,7 @@ interface Props {
 }
 
 export function FileUpload({ accept = ".pdf,.docx", onUpload }: Props) {
+  const { message } = App.useApp();
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
 

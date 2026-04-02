@@ -3,7 +3,7 @@
 import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Button, Card, Col, Empty, Form, Input, Modal, Row, Space, Typography, message } from "antd";
+import { App, Button, Card, Col, Empty, Form, Input, Modal, Row, Space, Typography } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { lessonPlansApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,6 +16,7 @@ const { Title, Text } = Typography;
 export default function LessonPlansPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: courseId } = use(params);
   const { isTeacher } = useAuth();
+  const { message } = App.useApp();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();

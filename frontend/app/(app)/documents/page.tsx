@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Button, Card, Col, Empty, Row, Space, Typography, message } from "antd";
+import { App, Button, Card, Col, Empty, Row, Space, Typography } from "antd";
 import { EyeOutlined, DeleteOutlined } from "@ant-design/icons";
 import { documentsApi } from "@/lib/api";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
@@ -13,6 +13,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 const { Title, Text } = Typography;
 
 export default function DocumentsPage() {
+  const { message } = App.useApp();
   const qc = useQueryClient();
 
   const { data: documents, isLoading } = useQuery({
