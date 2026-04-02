@@ -71,7 +71,11 @@ def list_assignments(
 @router.post("", response_model=AssignmentOut, status_code=status.HTTP_201_CREATED)
 def create_assignment(course_id: uuid.UUID, body: AssignmentCreate, _: TeacherUser, db: DbDep):
     _get_course_or_404(course_id, db)
-    assignment = Assignment(course_id=course_id, **body.model_dump())
+    data = body.model_dump()
+    # Serialise Pydantic content model → plain dict for JSONB storage
+    if data.get("content") is not None:
+        data["content"] = body.content.model_dump() if body.content else None
+    assignment = Assignment(course_id=course_id, **data)
     db.add(assignment)
     db.commit()
     db.refresh(assignment)
@@ -88,7 +92,10 @@ def update_assignment(
     course_id: uuid.UUID, assignment_id: uuid.UUID, body: AssignmentUpdate, _: TeacherUser, db: DbDep
 ):
     assignment = _get_assignment_or_404(assignment_id, course_id, db)
-    for field, value in body.model_dump(exclude_none=True).items():
+    data = body.model_dump(exclude_none=True)
+    if "content" in data and body.content is not None:
+        data["content"] = body.content.model_dump()
+    for field, value in data.items():
         setattr(assignment, field, value)
     db.commit()
     db.refresh(assignment)
@@ -100,6 +107,37 @@ def delete_assignment(course_id: uuid.UUID, assignment_id: uuid.UUID, _: Teacher
     assignment = _get_assignment_or_404(assignment_id, course_id, db)
     db.delete(assignment)
     db.commit()
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _append_question(
+    lines: list[str],
+    num: int,
+    section: dict,
+    answers: dict | None,
+) -> None:
+    q_type = section.get("type")
+    question_text = section.get("question", "")
+    student_answer = (answers or {}).get(str(num), "(no answer)")
+
+    if q_type == "mc":
+        opts_list = section.get("options", [])
+        labels = [chr(ord("A") + i) for i in range(len(opts_list))]
+        opts_str = "  ".join(f"{lbl}) {txt}" for lbl, txt in zip(labels, opts_list))
+        correct = section.get("correct_answer", "?")
+        lines.append(
+            f"Q{num} [MC] {question_text}\n"
+            f"  Options: {opts_str}\n"
+            f"  Correct: {correct}  |  Student answered: {student_answer}"
+        )
+    elif q_type == "long":
+        suggested = section.get("suggested_answer", "")
+        lines.append(
+            f"Q{num} [Long] {question_text}\n"
+            + (f"  Suggested answer: {suggested}\n" if suggested else "")
+            + f"  Student answer: {student_answer}"
+        )
 
 
 # ── Submissions ───────────────────────────────────────────────────────────────
@@ -143,6 +181,7 @@ def submit_assignment(
         assignment_id=assignment.id,
         student_id=current_user.id,
         student_feedback=body.student_feedback,
+        answers=body.answers,
         submission_date=datetime.now(timezone.utc),
         submission_status=SubmissionStatus.submitted,
     )
@@ -204,15 +243,30 @@ async def generate_ai_feedback(
     student = db.get(StudentUser, sub.student_id)
     student_name = student.user.nickname if student else "the student"
 
+    # Build a human-readable question+answer summary for the AI
+    qa_lines: list[str] = []
+    if assignment.content and isinstance(assignment.content, dict):
+        q_num = 0
+        for section in assignment.content.get("sections", []):
+            if section.get("type") == "passage":
+                qa_lines.append(f"[Reading Passage]\n{section.get('passage', '')}\n")
+                for sq in section.get("questions", []):
+                    q_num += 1
+                    _append_question(qa_lines, q_num, sq, sub.answers)
+            else:
+                q_num += 1
+                _append_question(qa_lines, q_num, section, sub.answers)
+
     prompt = (
         f"Assignment: {assignment.name}\n"
         f"Topic: {assignment.topic or 'N/A'}\n"
         f"Max score: {assignment.max_score or 'N/A'}\n"
-        f"Student score: {sub.score or 'not graded yet'}\n"
-        f"Student comment: {sub.student_feedback or 'none'}\n\n"
-        f"Please provide constructive feedback for {student_name} on this assignment. "
-        f"Highlight strengths, areas for improvement, and specific suggestions. "
-        f"Format your response in markdown."
+        f"Student score: {sub.score or 'not graded yet'}\n\n"
+        + ("\n".join(qa_lines) + "\n\n" if qa_lines else
+           f"Student answer: {sub.student_feedback or sub.answers or 'none'}\n\n")
+        + f"Please provide constructive feedback for {student_name} on this assignment. "
+          f"For each question, comment on correctness and suggest improvements. "
+          f"Format your response in markdown."
     )
 
     client = get_client()

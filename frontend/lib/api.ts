@@ -90,10 +90,14 @@ export const assignmentsApi = {
     api.get<Submission[]>(
       `/courses/${courseId}/assignments/${assignmentId}/submissions`
     ),
-  submit: (courseId: string, assignmentId: string, studentFeedback: string) =>
+  submit: (
+    courseId: string,
+    assignmentId: string,
+    payload: { student_feedback?: string; answers?: Record<string, string> }
+  ) =>
     api.post<Submission>(
       `/courses/${courseId}/assignments/${assignmentId}/submit`,
-      { student_feedback: studentFeedback }
+      payload
     ),
   grade: (
     courseId: string,
@@ -240,6 +244,34 @@ export interface ChapterAIComment {
   updated_at: string;
 }
 
+// ── Assignment content (question types) ──────────────────────────────────────
+
+export interface MCQuestion {
+  type: "mc";
+  question: string;
+  /** Ordered list of option texts; labels A, B, C… derived from position */
+  options: string[];
+  correct_answer?: string; // "A", "B", "C", …
+}
+
+export interface LongQuestion {
+  type: "long";
+  question: string;
+  suggested_answer?: string; // shown to teachers only
+}
+
+export interface PassageSection {
+  type: "passage";
+  passage: string;
+  questions: Array<MCQuestion | LongQuestion>;
+}
+
+export type AssignmentSection = MCQuestion | LongQuestion | PassageSection;
+
+export interface AssignmentContent {
+  sections: AssignmentSection[];
+}
+
 export interface Assignment {
   id: string;
   course_id: string;
@@ -250,6 +282,7 @@ export interface Assignment {
   topic?: string;
   due_date?: string;
   max_score?: number;
+  content?: AssignmentContent;
   created_at: string;
   updated_at: string;
 }
@@ -262,6 +295,7 @@ export interface AssignmentCreateData {
   due_date?: string;
   max_score?: number;
   chapter_id?: string;
+  content?: AssignmentContent;
 }
 
 export interface Submission {
@@ -273,6 +307,7 @@ export interface Submission {
   ai_feedback?: string;
   student_feedback?: string;
   teacher_feedback?: string;
+  answers?: Record<string, string>;
   score?: number;
   created_at: string;
   updated_at: string;

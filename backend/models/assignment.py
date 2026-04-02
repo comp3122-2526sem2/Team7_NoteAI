@@ -1,10 +1,10 @@
 import enum
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
@@ -50,6 +50,8 @@ class Assignment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
     max_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Structured question content: { sections: Section[] }
+    content: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
 
     course: Mapped["Course"] = relationship(back_populates="assignments")
     chapter: Mapped[Optional["Chapter"]] = relationship(back_populates="assignments")
@@ -102,6 +104,8 @@ class AssignmentSubmission(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     student_feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     teacher_feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Structured answers: { "1": "A", "2": "some long answer text", ... }
+    answers: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
 
     assignment: Mapped["Assignment"] = relationship(back_populates="submissions")
     student: Mapped["StudentUser"] = relationship(back_populates="submissions")

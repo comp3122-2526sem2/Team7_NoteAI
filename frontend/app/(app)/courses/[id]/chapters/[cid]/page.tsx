@@ -5,26 +5,329 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   App, Button, Card, Col, DatePicker, Divider, Empty, Form, Input,
-  InputNumber, List, Modal, Row, Select, Space, Table, Tag, Typography, Upload,
+  InputNumber, List, Modal, Radio, Row, Select, Space, Table, Tag,
+  Typography, Upload,
 } from "antd";
 import {
-  PlusOutlined, ThunderboltOutlined, ReloadOutlined, EyeOutlined, DeleteOutlined,
-  FileOutlined, UploadOutlined, SendOutlined, RobotOutlined, UserOutlined,
+  PlusOutlined, ThunderboltOutlined, ReloadOutlined, EyeOutlined,
+  DeleteOutlined, FileOutlined, UploadOutlined, SendOutlined,
+  RobotOutlined, UserOutlined, MinusCircleOutlined,
 } from "@ant-design/icons";
 import type { UploadFile } from "antd";
 import dayjs from "dayjs";
 import { assignmentsApi, chaptersApi } from "@/lib/api";
+import type {
+  Assignment, AssignmentContent, AssignmentSection,
+  ChatMessage, ChapterThread, Document, LongQuestion, MCQuestion, PassageSection,
+} from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthStore } from "@/lib/auth-store";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import { MarkdownInput } from "@/components/shared/markdown-input";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import type { Assignment, AssignmentCreateData, ChatMessage, ChapterThread, Document } from "@/lib/api";
 
 const { Title, Text, Paragraph } = Typography;
+const { TextArea } = Input;
 
 const TYPES = ["quiz", "homework", "project", "exam"] as const;
+
+
+// ── Question Builder ──────────────────────────────────────────────────────────
+
+type DraftMC = MCQuestion & { _key: string };
+type DraftLong = LongQuestion & { _key: string };
+type DraftPassage = Omit<PassageSection, "questions"> & {
+  _key: string;
+  questions: Array<(MCQuestion | LongQuestion) & { _key: string }>;
+};
+type DraftSection = DraftMC | DraftLong | DraftPassage;
+
+function makeKey() {
+  return Math.random().toString(36).slice(2);
+}
+
+function newMC(): DraftMC {
+  return { _key: makeKey(), type: "mc", question: "", options: ["", "", "", ""] };
+}
+function newLong(): DraftLong {
+  return { _key: makeKey(), type: "long", question: "", suggested_answer: "" };
+}
+function newPassage(): DraftPassage {
+  return { _key: makeKey(), type: "passage", passage: "", questions: [] };
+}
+
+function toContent(sections: DraftSection[]): AssignmentContent {
+  return {
+    sections: sections.map((s) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { _key, ...rest } = s as DraftSection & { _key: string };
+      if (rest.type === "passage") {
+        return {
+          ...rest,
+          questions: (rest as DraftPassage).questions.map(
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            ({ _key: _k, ...q }) => q as MCQuestion | LongQuestion
+          ),
+        } as PassageSection;
+      }
+      return rest as MCQuestion | LongQuestion;
+    }) as AssignmentSection[],
+  };
+}
+
+function QuestionBuilder({
+  sections,
+  onChange,
+}: {
+  sections: DraftSection[];
+  onChange: (s: DraftSection[]) => void;
+}) {
+  const update = (key: string, patch: Partial<DraftSection>) =>
+    onChange(sections.map((s) => (s._key === key ? { ...s, ...patch } : s)));
+
+  const remove = (key: string) => onChange(sections.filter((s) => s._key !== key));
+
+  const addSubQ = (parentKey: string, type: "mc" | "long") => {
+    onChange(
+      sections.map((s) => {
+        if (s._key !== parentKey || s.type !== "passage") return s;
+        const sub = type === "mc" ? newMC() : newLong();
+        return { ...s, questions: [...(s as DraftPassage).questions, sub] };
+      })
+    );
+  };
+
+  const updateSubQ = (parentKey: string, subKey: string, patch: object) =>
+    onChange(
+      sections.map((s) => {
+        if (s._key !== parentKey || s.type !== "passage") return s;
+        return {
+          ...s,
+          questions: (s as DraftPassage).questions.map((q) =>
+            q._key === subKey ? { ...q, ...patch } : q
+          ),
+        };
+      })
+    );
+
+  const removeSubQ = (parentKey: string, subKey: string) =>
+    onChange(
+      sections.map((s) => {
+        if (s._key !== parentKey || s.type !== "passage") return s;
+        return {
+          ...s,
+          questions: (s as DraftPassage).questions.filter((q) => q._key !== subKey),
+        };
+      })
+    );
+
+  return (
+    <div>
+      {sections.map((section, idx) => (
+        <Card
+          key={section._key}
+          size="small"
+          style={{ marginBottom: 12, background: "#fafafa" }}
+          title={
+            <Space>
+              <Tag color={
+                section.type === "mc" ? "blue" :
+                section.type === "long" ? "green" : "purple"
+              }>
+                {section.type === "mc" ? "Multiple Choice" :
+                 section.type === "long" ? "Long Question" : "Reading Passage"}
+              </Tag>
+              <Text type="secondary" style={{ fontSize: 12 }}>Section {idx + 1}</Text>
+            </Space>
+          }
+          extra={
+            <Button
+              type="text" danger size="small" icon={<MinusCircleOutlined />}
+              onClick={() => remove(section._key)}
+            />
+          }
+        >
+          {section.type === "passage" && (
+            <>
+              <Form.Item label="Passage Text" style={{ marginBottom: 8 }}>
+                <TextArea
+                  rows={5}
+                  placeholder="Paste the reading passage here…"
+                  value={(section as DraftPassage).passage}
+                  onChange={(e) => update(section._key, { passage: e.target.value })}
+                />
+              </Form.Item>
+
+              {/* Sub-questions */}
+              {(section as DraftPassage).questions.map((sq, qi) => (
+                <Card
+                  key={sq._key} size="small"
+                  style={{ marginBottom: 8, background: "#fff" }}
+                  title={
+                    <Space>
+                      <Tag color={sq.type === "mc" ? "blue" : "green"} style={{ fontSize: 11 }}>
+                        {sq.type === "mc" ? "MC" : "Long"}
+                      </Tag>
+                      <Text style={{ fontSize: 12 }}>Q{qi + 1}</Text>
+                    </Space>
+                  }
+                  extra={
+                    <Button type="text" danger size="small" icon={<MinusCircleOutlined />}
+                      onClick={() => removeSubQ(section._key, sq._key)} />
+                  }
+                >
+                  <SubQuestionFields
+                    q={sq}
+                    onChange={(patch) => updateSubQ(section._key, sq._key, patch)}
+                  />
+                </Card>
+              ))}
+
+              <Space>
+                <Button size="small" icon={<PlusOutlined />}
+                  onClick={() => addSubQ(section._key, "mc")}>
+                  Add MC
+                </Button>
+                <Button size="small" icon={<PlusOutlined />}
+                  onClick={() => addSubQ(section._key, "long")}>
+                  Add Long Question
+                </Button>
+              </Space>
+            </>
+          )}
+
+          {(section.type === "mc" || section.type === "long") && (
+            <SubQuestionFields
+              q={section as DraftMC | DraftLong}
+              onChange={(patch) => update(section._key, patch)}
+            />
+          )}
+        </Card>
+      ))}
+
+      <Space wrap>
+        <Button icon={<PlusOutlined />} onClick={() => onChange([...sections, newMC()])}>
+          Add MC Question
+        </Button>
+        <Button icon={<PlusOutlined />} onClick={() => onChange([...sections, newLong()])}>
+          Add Long Question
+        </Button>
+        <Button icon={<PlusOutlined />} onClick={() => onChange([...sections, newPassage()])}>
+          Add Reading Passage
+        </Button>
+      </Space>
+    </div>
+  );
+}
+
+const OPTION_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+function SubQuestionFields({
+  q,
+  onChange,
+}: {
+  q: (MCQuestion | LongQuestion) & { _key?: string };
+  onChange: (patch: object) => void;
+}) {
+  const mc = q as MCQuestion;
+  const long = q as LongQuestion;
+
+  const updateOption = (idx: number, val: string) => {
+    const opts = [...mc.options];
+    opts[idx] = val;
+    onChange({ options: opts });
+  };
+
+  const addOption = () => onChange({ options: [...mc.options, ""] });
+
+  const removeOption = (idx: number) => {
+    const opts = mc.options.filter((_, i) => i !== idx);
+    // If the current correct_answer label no longer exists, clear it
+    const validLabels = opts.map((_, i) => OPTION_LABELS[i]);
+    const newCorrect = validLabels.includes(mc.correct_answer ?? "") ? mc.correct_answer : undefined;
+    onChange({ options: opts, correct_answer: newCorrect });
+  };
+
+  return (
+    <>
+      <Form.Item label="Question" style={{ marginBottom: 8 }}>
+        <Input
+          value={q.question}
+          placeholder="Enter question text…"
+          onChange={(e) => onChange({ question: e.target.value })}
+        />
+      </Form.Item>
+
+      {q.type === "mc" && (
+        <>
+          <div style={{ marginBottom: 8 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>Options</Text>
+            {mc.options.map((opt, idx) => (
+              <Row key={idx} gutter={8} align="middle" style={{ marginTop: 6 }}>
+                <Col flex="28px">
+                  <Text strong style={{ fontSize: 13, color: "#1677ff" }}>
+                    {OPTION_LABELS[idx]}.
+                  </Text>
+                </Col>
+                <Col flex="auto">
+                  <Input
+                    size="small"
+                    value={opt}
+                    placeholder={`Option ${OPTION_LABELS[idx]}…`}
+                    onChange={(e) => updateOption(idx, e.target.value)}
+                  />
+                </Col>
+                <Col flex="32px">
+                  <Button
+                    type="text" danger size="small" icon={<MinusCircleOutlined />}
+                    disabled={mc.options.length <= 2}
+                    onClick={() => removeOption(idx)}
+                  />
+                </Col>
+              </Row>
+            ))}
+            <Button
+              size="small" icon={<PlusOutlined />} style={{ marginTop: 8 }}
+              onClick={addOption}
+              disabled={mc.options.length >= 26}
+            >
+              Add Option
+            </Button>
+          </div>
+          <Form.Item label="Correct Answer" style={{ marginBottom: 0 }}>
+            <Select
+              size="small"
+              style={{ width: 80 }}
+              value={mc.correct_answer}
+              onChange={(v) => onChange({ correct_answer: v })}
+              options={mc.options.map((_, i) => ({
+                value: OPTION_LABELS[i],
+                label: OPTION_LABELS[i],
+              }))}
+              allowClear
+              placeholder="—"
+            />
+          </Form.Item>
+        </>
+      )}
+
+      {q.type === "long" && (
+        <Form.Item label="Suggested Answer (teacher only)" style={{ marginBottom: 0 }}>
+          <TextArea
+            rows={3}
+            placeholder="Model answer shown to teachers when reviewing submissions…"
+            value={long.suggested_answer ?? ""}
+            onChange={(e) => onChange({ suggested_answer: e.target.value })}
+          />
+        </Form.Item>
+      )}
+    </>
+  );
+}
+
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function ChapterDetailPage({
   params,
@@ -39,6 +342,7 @@ export default function ChapterDetailPage({
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form] = Form.useForm();
+  const [sections, setSections] = useState<DraftSection[]>([]);
   const [streaming, setStreaming] = useState(false);
   const streamedRef = useRef("");
 
@@ -68,17 +372,13 @@ export default function ChapterDetailPage({
     queryKey: ["chapter-documents", courseId, chapterId],
     queryFn: () => chaptersApi.listDocuments(courseId, chapterId).then((r) => r.data),
     enabled: isTeacher,
-    // Keep polling while any document is still pending
     refetchInterval: (query) =>
       query.state.data?.some((d) => d.conversion_status === "pending") ? 3000 : false,
   });
 
   const generateMutation = useMutation({
     mutationFn: () => chaptersApi.generateAIComment(courseId, chapterId),
-    onSuccess: () => {
-      message.success("AI comment generated");
-      refetchAIComment();
-    },
+    onSuccess: () => { message.success("AI comment generated"); refetchAIComment(); },
     onError: () => message.error("Failed to generate AI comment"),
   });
 
@@ -117,12 +417,13 @@ export default function ChapterDetailPage({
   }, [courseId, chapterId, token, refetchAIComment]);
 
   const createMutation = useMutation({
-    mutationFn: (values: AssignmentCreateData & { due_date_picker?: dayjs.Dayjs }) => {
+    mutationFn: (values: { name: string; description?: string; assignment_type: "quiz" | "homework" | "project" | "exam"; topic?: string; due_date_picker?: dayjs.Dayjs; max_score?: number }) => {
       const { due_date_picker, ...rest } = values;
       return assignmentsApi.create(courseId, {
         ...rest,
         due_date: due_date_picker?.toISOString(),
         chapter_id: chapterId,
+        content: sections.length > 0 ? toContent(sections) : undefined,
       });
     },
     onSuccess: () => {
@@ -130,16 +431,14 @@ export default function ChapterDetailPage({
       qc.invalidateQueries({ queryKey: ["assignments", courseId, { chapterId }] });
       setCreateOpen(false);
       form.resetFields();
+      setSections([]);
     },
     onError: () => message.error("Failed to create assignment"),
   });
 
   const deleteDocMutation = useMutation({
     mutationFn: (docId: string) => chaptersApi.deleteDocument(courseId, chapterId, docId),
-    onSuccess: () => {
-      message.success("Document removed");
-      refetchDocs();
-    },
+    onSuccess: () => { message.success("Document removed"); refetchDocs(); },
     onError: () => message.error("Failed to remove document"),
   });
 
@@ -191,6 +490,19 @@ export default function ChapterDetailPage({
       render: (t: string) => <Tag color="blue" style={{ textTransform: "capitalize" }}>{t}</Tag>,
     },
     {
+      title: "Questions",
+      key: "questions",
+      render: (_: unknown, record: Assignment) => {
+        if (!record.content?.sections?.length) return <Text type="secondary">—</Text>;
+        let count = 0;
+        for (const s of record.content.sections) {
+          if (s.type === "passage") count += s.questions.length;
+          else count += 1;
+        }
+        return <Tag>{count} question{count !== 1 ? "s" : ""}</Tag>;
+      },
+    },
+    {
       title: "Due",
       dataIndex: "due_date",
       key: "due",
@@ -203,35 +515,30 @@ export default function ChapterDetailPage({
       render: (s?: number) => s ?? "—",
     },
     ...(isTeacher
-      ? [
-          {
-            title: "",
-            key: "actions",
-            width: 60,
-            render: (_: unknown, record: Assignment) => (
-              <ConfirmDialog title="Delete this assignment?" onConfirm={() => deleteMutation.mutate(record.id)}>
-                <Button type="text" danger size="small" icon={<DeleteOutlined />} />
-              </ConfirmDialog>
-            ),
-          },
-        ]
-      : [
-          {
-            title: "",
-            key: "view",
-            width: 60,
-            render: (_: unknown, record: Assignment) => (
-              <Link href={`/courses/${courseId}/assignments/${record.id}`}>
-                <Button type="text" size="small" icon={<EyeOutlined />} />
-              </Link>
-            ),
-          },
-        ]),
+      ? [{
+          title: "",
+          key: "actions",
+          width: 60,
+          render: (_: unknown, record: Assignment) => (
+            <ConfirmDialog title="Delete this assignment?" onConfirm={() => deleteMutation.mutate(record.id)}>
+              <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+            </ConfirmDialog>
+          ),
+        }]
+      : [{
+          title: "",
+          key: "view",
+          width: 60,
+          render: (_: unknown, record: Assignment) => (
+            <Link href={`/courses/${courseId}/assignments/${record.id}`}>
+              <Button type="text" size="small" icon={<EyeOutlined />} />
+            </Link>
+          ),
+        }]),
   ];
 
   return (
     <div>
-      {/* Chapter header */}
       <div style={{ marginBottom: 24 }}>
         <Title level={3} style={{ margin: 0 }}>{chapter.title}</Title>
         {chapter.description && (
@@ -242,18 +549,13 @@ export default function ChapterDetailPage({
       </div>
 
       <Row gutter={[24, 24]}>
-        {/* Assignments column */}
         <Col xs={24} lg={!isTeacher ? 14 : 24}>
           <Card
             title={`Assignments (${assignments?.length ?? 0})`}
             extra={
               isTeacher && (
-                <Button
-                  type="primary"
-                  size="small"
-                  icon={<PlusOutlined />}
-                  onClick={() => setCreateOpen(true)}
-                >
+                <Button type="primary" size="small" icon={<PlusOutlined />}
+                  onClick={() => setCreateOpen(true)}>
                   Add
                 </Button>
               )
@@ -264,18 +566,12 @@ export default function ChapterDetailPage({
             ) : !assignments?.length ? (
               <Empty description="No assignments in this chapter yet." />
             ) : (
-              <Table
-                dataSource={assignments}
-                columns={columns}
-                rowKey="id"
-                pagination={false}
-                size="small"
-              />
+              <Table dataSource={assignments} columns={columns} rowKey="id"
+                pagination={false} size="small" />
             )}
           </Card>
         </Col>
 
-        {/* AI Comment column – students only */}
         {!isTeacher && (
           <Col xs={24} lg={10}>
             <Card
@@ -287,20 +583,13 @@ export default function ChapterDetailPage({
               }
               extra={
                 <Space>
-                  <Button
-                    size="small"
-                    icon={<ReloadOutlined />}
+                  <Button size="small" icon={<ReloadOutlined />}
                     loading={generateMutation.isPending}
-                    onClick={() => generateMutation.mutate()}
-                  >
+                    onClick={() => generateMutation.mutate()}>
                     Refresh
                   </Button>
-                  <Button
-                    size="small"
-                    icon={<ThunderboltOutlined />}
-                    loading={streaming}
-                    onClick={handleStreamAI}
-                  >
+                  <Button size="small" icon={<ThunderboltOutlined />}
+                    loading={streaming} onClick={handleStreamAI}>
                     Stream
                   </Button>
                 </Space>
@@ -312,13 +601,9 @@ export default function ChapterDetailPage({
                 <div style={{ textAlign: "center", padding: "24px 0" }}>
                   <Text type="secondary">No AI comment yet.</Text>
                   <br />
-                  <Button
-                    type="primary"
-                    icon={<ThunderboltOutlined />}
-                    style={{ marginTop: 12 }}
-                    loading={generateMutation.isPending}
-                    onClick={() => generateMutation.mutate()}
-                  >
+                  <Button type="primary" icon={<ThunderboltOutlined />}
+                    style={{ marginTop: 12 }} loading={generateMutation.isPending}
+                    onClick={() => generateMutation.mutate()}>
                     Generate
                   </Button>
                 </div>
@@ -336,7 +621,6 @@ export default function ChapterDetailPage({
         )}
       </Row>
 
-      {/* Documents section – teachers only */}
       {isTeacher && (
         <Card
           title={
@@ -361,7 +645,7 @@ export default function ChapterDetailPage({
         >
           {!documents?.length ? (
             <Empty
-              description="No documents uploaded yet. Upload files to embed them into this chapter's AI workspace."
+              description="No documents uploaded yet."
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             />
           ) : (
@@ -371,27 +655,15 @@ export default function ChapterDetailPage({
               renderItem={(doc: Document) => (
                 <List.Item
                   actions={[
-                    <Tag
-                      key="status"
-                      color={
-                        doc.conversion_status === "completed"
-                          ? "green"
-                          : doc.conversion_status === "failed"
-                          ? "red"
-                          : "orange"
-                      }
-                    >
+                    <Tag key="status"
+                      color={doc.conversion_status === "completed" ? "green" :
+                             doc.conversion_status === "failed" ? "red" : "orange"}>
                       {doc.conversion_status}
                     </Tag>,
-                    <Button
-                      key="del"
-                      type="text"
-                      danger
-                      size="small"
+                    <Button key="del" type="text" danger size="small"
                       icon={<DeleteOutlined />}
                       onClick={() => deleteDocMutation.mutate(doc.id)}
-                      loading={deleteDocMutation.isPending}
-                    />,
+                      loading={deleteDocMutation.isPending} />,
                   ]}
                 >
                   <List.Item.Meta
@@ -413,7 +685,6 @@ export default function ChapterDetailPage({
         </Card>
       )}
 
-      {/* Chatroom */}
       <Card
         title={
           <Space>
@@ -431,34 +702,54 @@ export default function ChapterDetailPage({
       <Modal
         title="Add Assignment"
         open={createOpen}
-        onCancel={() => { setCreateOpen(false); form.resetFields(); }}
+        onCancel={() => { setCreateOpen(false); form.resetFields(); setSections([]); }}
         footer={null}
         destroyOnClose
+        width={760}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => createMutation.mutate(v)} style={{ marginTop: 16 }}>
-          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
+        <Form form={form} layout="vertical"
+          onFinish={(v) => createMutation.mutate(v)}
+          style={{ marginTop: 16 }}>
+          <Row gutter={16}>
+            <Col span={16}>
+              <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="assignment_type" label="Type"
+                initialValue="homework" rules={[{ required: true }]}>
+                <Select options={TYPES.map((t) => ({ value: t, label: t }))} />
+              </Form.Item>
+            </Col>
+          </Row>
+
           <Form.Item name="description" label="Description">
-            <MarkdownInput placeholder="Describe the assignment…" minHeight={120} />
+            <MarkdownInput placeholder="Describe the assignment…" minHeight={80} />
           </Form.Item>
-          <Space style={{ width: "100%" }} align="start">
-            <Form.Item name="assignment_type" label="Type" initialValue="homework" rules={[{ required: true }]}>
-              <Select style={{ width: 160 }} options={TYPES.map((t) => ({ value: t, label: t }))} />
-            </Form.Item>
-            <Form.Item name="max_score" label="Max Score">
-              <InputNumber min={0} style={{ width: 120 }} />
-            </Form.Item>
-          </Space>
-          <Space style={{ width: "100%" }} align="start">
-            <Form.Item name="topic" label="Topic">
-              <Input style={{ width: 160 }} />
-            </Form.Item>
-            <Form.Item name="due_date_picker" label="Due Date">
-              <DatePicker style={{ width: 160 }} />
-            </Form.Item>
-          </Space>
-          <Form.Item style={{ marginBottom: 0 }}>
+
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="topic" label="Topic">
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="max_score" label="Max Score">
+                <InputNumber min={0} style={{ width: "100%" }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="due_date_picker" label="Due Date">
+                <DatePicker style={{ width: "100%" }} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Divider orientation="left" style={{ fontSize: 13 }}>Questions</Divider>
+          <QuestionBuilder sections={sections} onChange={setSections} />
+
+          <Form.Item style={{ marginBottom: 0, marginTop: 16 }}>
             <Button type="primary" htmlType="submit" block loading={createMutation.isPending}>
               Create
             </Button>
@@ -469,16 +760,11 @@ export default function ChapterDetailPage({
   );
 }
 
-// ── Chapter Chat component ────────────────────────────────────────────────────
 
-function ChapterChat({
-  courseId,
-  chapterId,
-  token,
-}: {
-  courseId: string;
-  chapterId: string;
-  token: string;
+// ── Chapter Chat ──────────────────────────────────────────────────────────────
+
+function ChapterChat({ courseId, chapterId, token }: {
+  courseId: string; chapterId: string; token: string;
 }) {
   const { message: antMessage } = App.useApp();
   const qc = useQueryClient();
@@ -492,20 +778,15 @@ function ChapterChat({
   const bottomRef = useRef<HTMLDivElement>(null);
   const streamingRef = useRef("");
 
-  // Thread list
   const { data: threads, isLoading: threadsLoading } = useQuery({
     queryKey: ["chapter-threads", courseId, chapterId],
     queryFn: () => chaptersApi.listThreads(courseId, chapterId).then((r) => r.data),
   });
 
-  // When thread list loads, auto-select first thread
   useEffect(() => {
-    if (threads?.length && !activeThread) {
-      setActiveThread(threads[0]);
-    }
+    if (threads?.length && !activeThread) setActiveThread(threads[0]);
   }, [threads, activeThread]);
 
-  // Load history whenever active thread changes
   const { data: threadHistory, isLoading: historyLoading } = useQuery({
     queryKey: ["thread-history", courseId, chapterId, activeThread?.id],
     queryFn: () =>
@@ -513,14 +794,10 @@ function ChapterChat({
     enabled: !!activeThread,
   });
 
-  // Sync fetched history into local messages state
   useEffect(() => {
-    if (threadHistory) {
-      setMessages(threadHistory.history ?? []);
-    }
+    if (threadHistory) setMessages(threadHistory.history ?? []);
   }, [threadHistory]);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -545,10 +822,7 @@ function ChapterChat({
     try {
       await chaptersApi.deleteThread(courseId, chapterId, thread.id);
       qc.invalidateQueries({ queryKey: ["chapter-threads", courseId, chapterId] });
-      if (activeThread?.id === thread.id) {
-        setActiveThread(null);
-        setMessages([]);
-      }
+      if (activeThread?.id === thread.id) { setActiveThread(null); setMessages([]); }
     } catch {
       antMessage.error("Failed to delete thread");
     }
@@ -601,7 +875,7 @@ function ChapterChat({
 
   return (
     <div style={{ display: "flex", height: 520 }}>
-      {/* ── Thread sidebar ── */}
+      {/* Thread sidebar */}
       <div style={{
         width: 200, borderRight: "1px solid #f0f0f0", display: "flex",
         flexDirection: "column", flexShrink: 0,
@@ -609,7 +883,6 @@ function ChapterChat({
         <div style={{ padding: "10px 12px", borderBottom: "1px solid #f0f0f0" }}>
           <Text strong style={{ fontSize: 12, color: "#888" }}>THREADS</Text>
         </div>
-
         <div style={{ flex: 1, overflowY: "auto" }}>
           {threadsLoading ? (
             <div style={{ padding: 12 }}><LoadingSpinner /></div>
@@ -619,75 +892,48 @@ function ChapterChat({
             </div>
           ) : (
             threads.map((t) => (
-              <div
-                key={t.id}
+              <div key={t.id}
                 onClick={() => { setActiveThread(t); setMessages([]); }}
                 style={{
-                  padding: "8px 12px",
-                  cursor: "pointer",
+                  padding: "8px 12px", cursor: "pointer",
                   background: activeThread?.id === t.id ? "#e6f4ff" : "transparent",
                   borderLeft: activeThread?.id === t.id ? "3px solid #1677ff" : "3px solid transparent",
                   display: "flex", alignItems: "center", justifyContent: "space-between",
                 }}
               >
-                <Text
-                  ellipsis
-                  style={{
-                    fontSize: 13,
-                    fontWeight: activeThread?.id === t.id ? 600 : 400,
-                    flex: 1, minWidth: 0,
-                  }}
-                >
+                <Text ellipsis style={{
+                  fontSize: 13, fontWeight: activeThread?.id === t.id ? 600 : 400,
+                  flex: 1, minWidth: 0,
+                }}>
                   {t.name}
                 </Text>
-                <Button
-                  type="text"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
+                <Button type="text" size="small" danger icon={<DeleteOutlined />}
                   style={{ flexShrink: 0, opacity: 0.5 }}
-                  onClick={(e) => { e.stopPropagation(); handleDeleteThread(t); }}
-                />
+                  onClick={(e) => { e.stopPropagation(); handleDeleteThread(t); }} />
               </div>
             ))
           )}
         </div>
-
-        {/* New thread input */}
         <div style={{ padding: "10px 12px", borderTop: "1px solid #f0f0f0" }}>
-          <Input
-            size="small"
-            placeholder="Thread name…"
-            value={newThreadName}
+          <Input size="small" placeholder="Thread name…" value={newThreadName}
             onChange={(e) => setNewThreadName(e.target.value)}
-            onPressEnter={handleCreateThread}
-            style={{ marginBottom: 6 }}
-          />
-          <Button
-            type="primary"
-            size="small"
-            block
-            icon={<PlusOutlined />}
-            loading={creatingThread}
-            onClick={handleCreateThread}
-          >
+            onPressEnter={handleCreateThread} style={{ marginBottom: 6 }} />
+          <Button type="primary" size="small" block icon={<PlusOutlined />}
+            loading={creatingThread} onClick={handleCreateThread}>
             New Thread
           </Button>
         </div>
       </div>
 
-      {/* ── Chat area ── */}
+      {/* Chat area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {!activeThread ? (
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="Select a thread or create a new one to start chatting"
-            />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="Select a thread or create a new one to start chatting" />
           </div>
         ) : (
           <>
-            {/* Thread header */}
             <div style={{
               padding: "8px 16px", borderBottom: "1px solid #f0f0f0",
               background: "#fafafa", display: "flex", alignItems: "center", gap: 8,
@@ -695,34 +941,24 @@ function ChapterChat({
               <RobotOutlined style={{ color: "#1677ff" }} />
               <Text strong style={{ fontSize: 13 }}>{activeThread.name}</Text>
             </div>
-
-            {/* Messages */}
             <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
               {historyLoading ? (
                 <LoadingSpinner />
               ) : messages.length === 0 ? (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="No messages yet. Ask anything about this chapter!"
-                />
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="No messages yet. Ask anything about this chapter!" />
               ) : (
                 messages.map((msg, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      flexDirection: msg.role === "user" ? "row-reverse" : "row",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      marginBottom: 16,
-                    }}
-                  >
+                  <div key={i} style={{
+                    display: "flex",
+                    flexDirection: msg.role === "user" ? "row-reverse" : "row",
+                    alignItems: "flex-start", gap: 10, marginBottom: 16,
+                  }}>
                     <div style={{
                       width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       background: msg.role === "user" ? "#1677ff" : "#f0f0f0",
-                      color: msg.role === "user" ? "#fff" : "#555",
-                      fontSize: 13,
+                      color: msg.role === "user" ? "#fff" : "#555", fontSize: 13,
                     }}>
                       {msg.role === "user" ? <UserOutlined /> : <RobotOutlined />}
                     </div>
@@ -743,27 +979,16 @@ function ChapterChat({
               )}
               <div ref={bottomRef} />
             </div>
-
-            {/* Input bar */}
             <div style={{
               borderTop: "1px solid #f0f0f0", padding: "12px 16px",
               display: "flex", gap: 8,
             }}>
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
+              <Input value={input} onChange={(e) => setInput(e.target.value)}
                 onPressEnter={(e) => { if (!e.shiftKey) { e.preventDefault(); sendMessage(); } }}
                 placeholder="Ask about this chapter… (Enter to send)"
-                disabled={responding}
-                style={{ flex: 1 }}
-              />
-              <Button
-                type="primary"
-                icon={<SendOutlined />}
-                onClick={sendMessage}
-                loading={responding}
-                disabled={!input.trim()}
-              >
+                disabled={responding} style={{ flex: 1 }} />
+              <Button type="primary" icon={<SendOutlined />} onClick={sendMessage}
+                loading={responding} disabled={!input.trim()}>
                 Send
               </Button>
             </div>
