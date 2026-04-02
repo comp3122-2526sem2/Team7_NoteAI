@@ -12,10 +12,11 @@ from anythingllm import ChatMode, get_client
 from anythingllm.exceptions import AnythingLLMError
 from database import SessionLocal
 from deps import CurrentUser, DbDep, TeacherUser
-from models import Course, Document, StudentUser, UserRole
-from models.chapter import Chapter, ChapterAIComment
+from models import Course, Document, UserRole
+from models.chapter import Chapter, ChapterAIComment, ChapterUserWorkspace
 from models.chapter_thread import ChapterThread
 from models.document import ConversionStatus, DocumentType
+from models.user import StudentUser
 from schemas import ChapterCreate, ChapterOut, ChapterUpdate, ChapterAICommentOut, ThreadCreate, ThreadOut
 from schemas.documents import DocumentOut
 
@@ -54,26 +55,78 @@ def _get_chapter_or_404(chapter_id: uuid.UUID, course_id: uuid.UUID, db) -> Chap
     return chapter
 
 
-async def _ensure_workspace(chapter: Chapter, db) -> str:
+async def _ensure_teacher_workspace(chapter: Chapter, db) -> str:
     """
-    Return the chapter's AnythingLLM workspace slug, creating it first if needed.
-    Stores the slug back to the DB on first creation.
+    Return the chapter's teacher (parent) workspace slug, creating it if needed.
+    Named: chapter-{chapter_id}
     """
     if chapter.workspace_slug:
         return chapter.workspace_slug
 
     client = get_client()
     try:
-        workspace = await client.workspace.create(name=f"chapter-{chapter.id}")
+        workspace = await client.workspace.create(name=str(chapter.id))
         chapter.workspace_slug = workspace.slug
-        db.commit()
-        db.refresh(chapter)
     except AnythingLLMError:
-        # Degrade gracefully – AI features will still work with a fallback slug
-        chapter.workspace_slug = f"chapter-{chapter.id}"
-        db.commit()
+        chapter.workspace_slug = str(chapter.id)
 
+    db.commit()
     return chapter.workspace_slug
+
+
+async def _ensure_student_workspace(chapter: Chapter, user_id: uuid.UUID, db) -> str:
+    """
+    Return the student's personal workspace slug for this chapter, creating it if needed.
+    Named: chapter-{chapter_id}-{user_id}
+    On creation the workspace is seeded with all documents already in the teacher workspace.
+    """
+    existing = db.scalar(
+        select(ChapterUserWorkspace).where(
+            ChapterUserWorkspace.chapter_id == chapter.id,
+            ChapterUserWorkspace.user_id == user_id,
+        )
+    )
+    if existing:
+        return existing.workspace_slug
+
+    client = get_client()
+    try:
+        ws = await client.workspace.create(name=f"{chapter.id}-{user_id}")
+        slug = ws.slug
+    except AnythingLLMError:
+        slug = f"{chapter.id}-{user_id}"
+
+    # Seed with documents already embedded in the teacher workspace
+    doc_locations: list[str] = list(
+        db.scalars(
+            select(Document.anythingllm_location).where(
+                Document.chapter_id == chapter.id,
+                Document.anythingllm_location.isnot(None),
+                Document.conversion_status == ConversionStatus.completed,
+            )
+        ).all()
+    )
+    if doc_locations:
+        try:
+            await client.workspace.add_documents(slug, doc_locations)
+        except AnythingLLMError:
+            pass
+
+    record = ChapterUserWorkspace(
+        chapter_id=chapter.id,
+        user_id=user_id,
+        workspace_slug=slug,
+    )
+    db.add(record)
+    db.commit()
+    return slug
+
+
+async def _get_workspace_for_user(chapter: Chapter, current_user, db) -> str:
+    """Dispatch to the correct workspace based on the caller's role."""
+    if current_user.role in (UserRole.teacher, UserRole.admin):
+        return await _ensure_teacher_workspace(chapter, db)
+    return await _ensure_student_workspace(chapter, current_user.id, db)
 
 
 # ── Chapters ──────────────────────────────────────────────────────────────────
@@ -95,13 +148,13 @@ async def create_chapter(course_id: uuid.UUID, body: ChapterCreate, _: TeacherUs
     db.add(chapter)
     db.flush()
 
-    # Provision a dedicated AnythingLLM workspace for this chapter
+    # Provision the teacher (parent) workspace
     client = get_client()
     try:
-        workspace = await client.workspace.create(name=f"chapter-{chapter.id}")
+        workspace = await client.workspace.create(name=str(chapter.id))
         chapter.workspace_slug = workspace.slug
     except AnythingLLMError:
-        pass  # workspace created later on first use
+        pass  # workspace provisioned lazily on first use
 
     db.commit()
     db.refresh(chapter)
@@ -128,13 +181,21 @@ def update_chapter(
 @router.delete("/{chapter_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_chapter(course_id: uuid.UUID, chapter_id: uuid.UUID, _: TeacherUser, db: DbDep):
     chapter = _get_chapter_or_404(chapter_id, course_id, db)
-    slug = chapter.workspace_slug
+    teacher_slug = chapter.workspace_slug
+
+    # Collect student workspace slugs before the cascade wipes the rows
+    student_slugs = [
+        uw.workspace_slug
+        for uw in db.scalars(
+            select(ChapterUserWorkspace).where(ChapterUserWorkspace.chapter_id == chapter_id)
+        ).all()
+    ]
+
     db.delete(chapter)
     db.commit()
 
-    # Clean up the AnythingLLM workspace
-    if slug:
-        client = get_client()
+    client = get_client()
+    for slug in ([teacher_slug] if teacher_slug else []) + student_slugs:
         try:
             await client.workspace.delete(slug)
         except AnythingLLMError:
@@ -162,9 +223,8 @@ async def _process_document_upload(
     original_filename: str,
 ) -> None:
     """
-    Background task: upload the file to AnythingLLM, embed it into the
-    chapter's workspace, and update the document's conversion_status.
-    Opens its own DB session since the request session is already closed.
+    Background task: upload the file to AnythingLLM, embed it into the teacher
+    workspace, then fan out to all existing student workspaces for this chapter.
     """
     db = SessionLocal()
     try:
@@ -185,13 +245,27 @@ async def _process_document_upload(
             location = result.documents[0].location
             doc.anythingllm_location = location
 
-            workspace_slug = await _ensure_workspace(chapter, db)
-            await client.workspace.add_documents(workspace_slug, [location])
+            # Add to teacher workspace
+            teacher_slug = await _ensure_teacher_workspace(chapter, db)
+            await client.workspace.add_documents(teacher_slug, [location])
             doc.conversion_status = ConversionStatus.completed
+            db.commit()
+
+            # Fan out to existing student workspaces
+            student_workspaces = db.scalars(
+                select(ChapterUserWorkspace).where(
+                    ChapterUserWorkspace.chapter_id == chapter_id
+                )
+            ).all()
+            for sw in student_workspaces:
+                try:
+                    await client.workspace.add_documents(sw.workspace_slug, [location])
+                except AnythingLLMError:
+                    pass
         else:
             doc.conversion_status = ConversionStatus.failed
+            db.commit()
 
-        db.commit()
     except Exception:
         try:
             doc = db.get(Document, doc_id)
@@ -219,9 +293,9 @@ async def upload_chapter_document(
     document_type: DocumentType = DocumentType.other,
 ):
     """
-    Save the file and return immediately with status=pending.
-    AnythingLLM upload and workspace embedding run in the background.
-    Poll GET /{chapter_id}/documents to watch conversion_status → completed / failed.
+    Teachers only. Save the file and return immediately with status=pending.
+    AnythingLLM upload, teacher-workspace embedding, and student-workspace
+    fan-out all run in the background.
     """
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
@@ -284,19 +358,28 @@ async def delete_chapter_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
 
-    # Remove from AnythingLLM workspace
-    if doc.anythingllm_location and chapter.workspace_slug:
-        client = get_client()
-        try:
-            await client.workspace.remove_documents(
-                chapter.workspace_slug, [doc.anythingllm_location]
-            )
-        except AnythingLLMError:
-            pass
+    location = doc.anythingllm_location
+    client = get_client()
 
-    # Remove local file
-    path = Path(doc.original_file_path)
-    path.unlink(missing_ok=True)
+    if location:
+        # Remove from teacher workspace
+        if chapter.workspace_slug:
+            try:
+                await client.workspace.remove_documents(chapter.workspace_slug, [location])
+            except AnythingLLMError:
+                pass
+
+        # Fan out removal to all student workspaces
+        student_workspaces = db.scalars(
+            select(ChapterUserWorkspace).where(ChapterUserWorkspace.chapter_id == chapter_id)
+        ).all()
+        for sw in student_workspaces:
+            try:
+                await client.workspace.remove_documents(sw.workspace_slug, [location])
+            except AnythingLLMError:
+                pass
+
+    Path(doc.original_file_path).unlink(missing_ok=True)
     db.delete(doc)
     db.commit()
 
@@ -336,7 +419,9 @@ async def generate_ai_comment(
     chapter = _get_chapter_or_404(chapter_id, course_id, db)
     student = db.get(StudentUser, current_user.id)
     student_name = student.user.nickname if student else "the student"
-    workspace_slug = await _ensure_workspace(chapter, db)
+
+    # Use the student's own workspace (seeded with teacher docs)
+    workspace_slug = await _ensure_student_workspace(chapter, current_user.id, db)
 
     prompt = (
         f"Chapter: {chapter.title}\n"
@@ -388,7 +473,8 @@ async def stream_ai_comment(
     chapter = _get_chapter_or_404(chapter_id, course_id, db)
     student = db.get(StudentUser, current_user.id)
     student_name = student.user.nickname if student else "the student"
-    workspace_slug = await _ensure_workspace(chapter, db)
+
+    workspace_slug = await _ensure_student_workspace(chapter, current_user.id, db)
 
     prompt = (
         f"Chapter: {chapter.title}\n"
@@ -459,16 +545,12 @@ async def create_thread(
     current_user: CurrentUser,
     db: DbDep,
 ):
-    """Create a new named thread in the chapter's AnythingLLM workspace."""
+    """Create a new named thread in the caller's personal workspace for this chapter."""
     chapter = _get_chapter_or_404(chapter_id, course_id, db)
-    workspace_slug = await _ensure_workspace(chapter, db)
+    workspace_slug = await _get_workspace_for_user(chapter, current_user, db)
 
     client = get_client()
-    thread_info = await client.workspace.create_thread(
-        workspace_slug,
-        body.name,
-        user_id=current_user.anythingllm_user_id if hasattr(current_user, "anythingllm_user_id") else None,
-    )
+    thread_info = await client.workspace.create_thread(workspace_slug, body.name)
 
     record = ChapterThread(
         chapter_id=chapter_id,
@@ -490,7 +572,7 @@ async def delete_thread(
     current_user: CurrentUser,
     db: DbDep,
 ):
-    """Delete a thread from the chapter workspace and our DB."""
+    """Delete a thread from the caller's workspace and remove from DB."""
     chapter = _get_chapter_or_404(chapter_id, course_id, db)
     thread = db.scalar(
         select(ChapterThread).where(
@@ -501,12 +583,12 @@ async def delete_thread(
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found.")
 
-    if chapter.workspace_slug:
-        client = get_client()
-        try:
-            await client.workspace.delete_thread(chapter.workspace_slug, thread.thread_slug)
-        except Exception:
-            pass
+    workspace_slug = await _get_workspace_for_user(chapter, current_user, db)
+    client = get_client()
+    try:
+        await client.workspace.delete_thread(workspace_slug, thread.thread_slug)
+    except AnythingLLMError:
+        pass
 
     db.delete(thread)
     db.commit()
@@ -531,7 +613,7 @@ async def get_thread_history(
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found.")
 
-    workspace_slug = await _ensure_workspace(chapter, db)
+    workspace_slug = await _get_workspace_for_user(chapter, current_user, db)
     client = get_client()
     history = await client.workspace.get_thread_history(workspace_slug, thread.thread_slug)
     return {"history": [{"role": h.role, "content": h.content, "sentAt": h.sentAt} for h in history.history]}
@@ -560,7 +642,7 @@ async def stream_thread_chat(
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found.")
 
-    workspace_slug = await _ensure_workspace(chapter, db)
+    workspace_slug = await _get_workspace_for_user(chapter, current_user, db)
     thread_slug = thread.thread_slug
     message = body.message
 

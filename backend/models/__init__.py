@@ -1,7 +1,7 @@
 from .base import Base
 from .user import User, StudentUser, TeacherUser, UserRole
 from .course import Course, CourseStudent, CourseTeacher
-from .chapter import Chapter, ChapterAIComment
+from .chapter import Chapter, ChapterAIComment, ChapterUserWorkspace
 from .chapter_thread import ChapterThread
 from .assignment import Assignment, CourseAssignment, AssignmentSubmission, AssignmentType, SubmissionStatus
 from .document import Document, DocumentType, ConversionStatus
@@ -14,7 +14,7 @@ __all__ = [
     # course
     "Course", "CourseStudent", "CourseTeacher",
     # chapter
-    "Chapter", "ChapterAIComment", "ChapterThread",
+    "Chapter", "ChapterAIComment", "ChapterUserWorkspace", "ChapterThread",
     # assignment
     "Assignment", "CourseAssignment", "AssignmentSubmission",
     "AssignmentType", "SubmissionStatus",
