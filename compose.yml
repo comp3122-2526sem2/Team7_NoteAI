@@ -1,4 +1,23 @@
 services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: noteai_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      - postgres
+      - noteai-anythingllm
+    networks:
+      - noteai_network
+
   noteai-anythingllm:
     image: mintplexlabs/anythingllm:latest
     container_name: noteai-anythingllm
@@ -11,6 +30,8 @@ services:
       - ./anythingllm/storage:/app/server/storage
       - ./anythingllm/.env:/app/server/.env
     restart: always
+    networks:
+      - noteai_network
   postgres:
     build:
       context: ./postgresql

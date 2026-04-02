@@ -37,7 +37,6 @@ from .schemas import (
     ChatSource,
     DocumentRawTextResponse,
     DocumentUploadResponse,
-    MasteryLevel,
     UploadedDocument,
     VectorSearchResponse,
     VectorSearchResult,
@@ -66,6 +65,9 @@ __all__ = [
     "UploadedDocument",
     "DocumentUploadResponse",
     "DocumentRawTextResponse",
+    # misc
+    "get_client",
+    "build_client",
 ]
 
 
@@ -115,7 +117,3 @@ def build_client(
         api_key=api_key or _api_key(),
     )
 
-
-# Re-export MasteryLevel from schemas even though it's defined in models too,
-# so callers can import everything AI-related from one place.
-MasteryLevel = MasteryLevel  # noqa: PLW0127

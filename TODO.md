@@ -1,3 +1,90 @@
+Frontend:
+
+## Stack
+- Next.js 15 (App Router)
+- TypeScript
+- Tailwind CSS + shadcn/ui
+- TanStack Query (server state)
+- Zustand (client state)
+- CodeMirror 6 (markdown live editor)
+- react-pdf / jsPDF (PDF export preview)
+
+## Setup
+- [ ] Init Next.js project (`npx create-next-app@latest frontend --typescript --tailwind --app`)
+- [ ] Install shadcn/ui (`npx shadcn@latest init`)
+- [ ] Install dependencies: `@tanstack/react-query`, `zustand`, `@codemirror/view`, `@codemirror/lang-markdown`, `axios`
+- [ ] Create `frontend/lib/api.ts` — typed axios client with JWT interceptor (reads token from localStorage)
+- [ ] Create `frontend/lib/queryClient.ts` — TanStack Query client setup
+- [ ] Set up `.env.local` with `NEXT_PUBLIC_API_URL=http://localhost:8000`
+
+## Auth
+- [ ] `/login` page — username + password form → `POST /auth/login` → store JWT
+- [ ] `/register` page — register form with role selector (student / teacher)
+- [ ] Auth guard middleware (`middleware.ts`) — redirect unauthenticated users to `/login`
+- [ ] `useAuth` hook — current user, role, logout
+
+## Layout & Navigation
+- [ ] Root layout with sidebar navigation
+- [ ] Sidebar: links vary by role (teacher sees lesson plans, doc checker, progress; student sees courses, assignments)
+- [ ] Top bar: current user nickname + logout button
+- [ ] Role-aware route protection (teacher-only pages redirect students)
+
+## Courses
+- [ ] `/courses` — list enrolled/assigned courses (cards)
+- [ ] `/courses/new` [teacher] — create course form
+- [ ] `/courses/[id]` — course overview (syllabus, assignments, lesson plans tabs)
+- [ ] `/courses/[id]/settings` [teacher] — enroll students, assign teachers
+
+## Assignments
+- [ ] `/courses/[id]/assignments` — list assignments with due dates and status badges
+- [ ] `/courses/[id]/assignments/new` [teacher] — create assignment form (type, topic, due date, max score)
+- [ ] `/courses/[id]/assignments/[aid]` — assignment detail
+  - [ ] Teacher view: list of submissions with scores, grade panel, AI feedback button
+  - [ ] Student view: submit form + view own submission + AI feedback display
+- [ ] AI feedback panel — calls `POST .../ai-feedback`, renders markdown response
+
+## Lesson Plan Editor (Req 1)
+- [ ] `/courses/[id]/lesson-plans` — list lesson plans (draft / published / archived badges)
+- [ ] `/courses/[id]/lesson-plans/new` [teacher] — create lesson plan
+- [ ] `/courses/[id]/lesson-plans/[pid]` — split-pane editor
+  - [ ] Left pane: rendered markdown preview (the saved `content`)
+  - [ ] Right pane: live CodeMirror 6 markdown editor
+  - [ ] Topic selector panel (add/edit/delete `lesson_plan_topic` rows)
+  - [ ] Toolbar: Save (PUT), AI Generate (POST `/ai-generate`), AI Stream (POST `/ai-stream` SSE), Export PDF
+  - [ ] AI stream — connect to SSE endpoint, stream tokens into the editor in real time
+  - [ ] Version history drawer — list versions, diff viewer, restore button
+  - [ ] PDF export — convert `content` markdown → HTML → apply `css_style` → print/download
+
+## Document Format Checker (Req 2)
+- [ ] `/documents` [teacher] — list uploaded documents with conversion status badges
+- [ ] Upload area — drag-and-drop or file picker (PDF / DOCX), calls `POST /documents/upload`
+- [ ] Document detail page
+  - [ ] Conversion status indicator (pending / completed / failed)
+  - [ ] Rendered markdown preview with AI-generated CSS applied
+  - [ ] AI format feedback panel (markdown rendered)
+  - [ ] "Run AI Check" button → `POST /documents/[id]/ai-check`
+
+## Student Progress (Req 3)
+- [ ] `/courses/[id]/progress` [teacher] — class overview table
+  - [ ] Rows: students, columns: topics, cells: mastery badge (weak / developing / proficient)
+  - [ ] Click cell → inline edit mastery level
+- [ ] `/courses/[id]/progress/students/[sid]` [teacher] — individual student detail
+  - [ ] Topic mastery chart (bar or radar)
+  - [ ] Assignment submission history with scores
+  - [ ] AI recommendations list
+  - [ ] "Generate Recommendation" button → `POST .../recommendations/generate`
+- [ ] Student self-view `/progress` — read-only view of own topic mastery per course
+
+## Shared Components
+- [ ] `<MarkdownRenderer>` — renders markdown with syntax highlighting (use `react-markdown` + `rehype-highlight`)
+- [ ] `<MasteryBadge>` — weak (red) / developing (yellow) / proficient (green)
+- [ ] `<StatusBadge>` — generic status pill (draft, pending, submitted, etc.)
+- [ ] `<ConfirmDialog>` — reusable delete/action confirmation modal
+- [ ] `<LoadingSpinner>` / `<ErrorBoundary>`
+- [ ] `<FileUpload>` — drag-and-drop upload component with progress bar
+
+---
+
 Backend:
 - [ ] Create a new database for noteai
 
