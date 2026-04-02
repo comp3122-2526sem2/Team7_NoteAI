@@ -123,10 +123,32 @@ async def _ensure_student_workspace(chapter: Chapter, user_id: uuid.UUID, db) ->
 
 
 async def _get_workspace_for_user(chapter: Chapter, current_user, db) -> str:
-    """Dispatch to the correct workspace based on the caller's role."""
+    """Return the caller's workspace slug, creating it if it doesn't exist yet."""
     if current_user.role in (UserRole.teacher, UserRole.admin):
         return await _ensure_teacher_workspace(chapter, db)
     return await _ensure_student_workspace(chapter, current_user.id, db)
+
+
+def _lookup_workspace_slug(chapter: Chapter, current_user, db) -> str:
+    """
+    Read the caller's workspace slug directly from the DB without creating anything.
+    Use this for operations on existing threads where the workspace is guaranteed
+    to already exist (history fetch, stream, delete).
+    """
+    if current_user.role in (UserRole.teacher, UserRole.admin):
+        if not chapter.workspace_slug:
+            raise HTTPException(status_code=404, detail="Workspace not provisioned.")
+        return chapter.workspace_slug
+
+    uw = db.scalar(
+        select(ChapterUserWorkspace).where(
+            ChapterUserWorkspace.chapter_id == chapter.id,
+            ChapterUserWorkspace.user_id == current_user.id,
+        )
+    )
+    if not uw:
+        raise HTTPException(status_code=404, detail="Workspace not provisioned.")
+    return uw.workspace_slug
 
 
 # ── Chapters ──────────────────────────────────────────────────────────────────
@@ -565,7 +587,7 @@ async def create_thread(
 
 
 @router.delete("/{chapter_id}/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_thread(
+async def delete_thread(  # still async because of the AnythingLLM API call
     course_id: uuid.UUID,
     chapter_id: uuid.UUID,
     thread_id: uuid.UUID,
@@ -583,7 +605,7 @@ async def delete_thread(
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found.")
 
-    workspace_slug = await _get_workspace_for_user(chapter, current_user, db)
+    workspace_slug = _lookup_workspace_slug(chapter, current_user, db)
     client = get_client()
     try:
         await client.workspace.delete_thread(workspace_slug, thread.thread_slug)
@@ -613,7 +635,8 @@ async def get_thread_history(
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found.")
 
-    workspace_slug = await _get_workspace_for_user(chapter, current_user, db)
+    # Use the stored workspace slug – no workspace creation on a history read
+    workspace_slug = _lookup_workspace_slug(chapter, current_user, db)
     client = get_client()
     history = await client.workspace.get_thread_history(workspace_slug, thread.thread_slug)
     return {"history": [{"role": h.role, "content": h.content, "sentAt": h.sentAt} for h in history.history]}
@@ -642,7 +665,8 @@ async def stream_thread_chat(
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found.")
 
-    workspace_slug = await _get_workspace_for_user(chapter, current_user, db)
+    # Thread exists → workspace is guaranteed to exist; read slug from DB
+    workspace_slug = _lookup_workspace_slug(chapter, current_user, db)
     thread_slug = thread.thread_slug
     message = body.message
 

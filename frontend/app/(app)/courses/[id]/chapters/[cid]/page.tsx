@@ -506,13 +506,19 @@ function ChapterChat({
   }, [threads, activeThread]);
 
   // Load history whenever active thread changes
-  const { isLoading: historyLoading } = useQuery({
+  const { data: threadHistory, isLoading: historyLoading } = useQuery({
     queryKey: ["thread-history", courseId, chapterId, activeThread?.id],
     queryFn: () =>
       chaptersApi.getThreadHistory(courseId, chapterId, activeThread!.id).then((r) => r.data),
     enabled: !!activeThread,
-    onSuccess: (data: { history: ChatMessage[] }) => setMessages(data.history ?? []),
-  } as Parameters<typeof useQuery>[0]);
+  });
+
+  // Sync fetched history into local messages state
+  useEffect(() => {
+    if (threadHistory) {
+      setMessages(threadHistory.history ?? []);
+    }
+  }, [threadHistory]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
