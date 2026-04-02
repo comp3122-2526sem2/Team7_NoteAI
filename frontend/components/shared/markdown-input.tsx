@@ -7,14 +7,7 @@ const MarkdownInputInner = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div
-        style={{
-          minHeight: 160,
-          background: "#fafafa",
-          borderRadius: "0 0 6px 6px",
-          border: "1px solid #d9d9d9",
-        }}
-      />
+      <div style={{ minHeight: 160, background: "#fafafa" }} />
     ),
   }
 );
@@ -23,31 +16,32 @@ interface Props {
   value?: string;
   onChange?: (value: string) => void;
   placeholder?: string;
+  /** Total editor height including toolbar (px). Defaults to 160. */
   minHeight?: number;
 }
+
+const TOOLBAR_HEIGHT = 42;
 
 /**
  * Controlled markdown rich-text input backed by MDXEditor.
  * Drop-in replacement for antd TextArea inside Form.Item — receives
  * `value` / `onChange` automatically from Form context.
  */
-export function MarkdownInput({ value, onChange, placeholder, minHeight }: Props) {
+export function MarkdownInput({ value, onChange, placeholder, minHeight = 160 }: Props) {
+  const contentMinHeight = Math.max(60, minHeight - TOOLBAR_HEIGHT);
+
   return (
     <div
       style={{
         border: "1px solid #d9d9d9",
         borderRadius: 6,
-        // Must be visible (not hidden) so the toolbar's floating
-        // BlockTypeSelect dropdown is not clipped by this container.
         overflow: "visible",
       }}
     >
-      <MarkdownInputInner
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        minHeight={minHeight}
-      />
+      {/* Target the contentEditable div directly — MDXEditor doesn't
+          forward minHeight to its inner DOM so we inject it here. */}
+      <style>{`.mdxeditor-content { min-height: ${contentMinHeight}px !important; }`}</style>
+      <MarkdownInputInner value={value} onChange={onChange} placeholder={placeholder} />
     </div>
   );
 }

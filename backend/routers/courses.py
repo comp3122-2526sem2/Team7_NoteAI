@@ -91,18 +91,18 @@ def list_students(course_id: uuid.UUID, _: TeacherUser, db: DbDep):
 @router.post("/{course_id}/students", status_code=status.HTTP_201_CREATED)
 def enroll_student(course_id: uuid.UUID, body: EnrollStudentRequest, _: TeacherUser, db: DbDep):
     _get_course_or_404(course_id, db)
-    student = db.get(StudentUser, body.student_id)
+    student = db.scalar(select(StudentUser).where(StudentUser.student_id == body.student_id))
     if not student:
         raise HTTPException(status_code=404, detail="Student not found.")
     existing = db.scalar(
         select(CourseStudent).where(
             CourseStudent.course_id == course_id,
-            CourseStudent.student_id == body.student_id,
+            CourseStudent.student_id == student.id,
         )
     )
     if existing:
         raise HTTPException(status_code=409, detail="Student already enrolled.")
-    db.add(CourseStudent(course_id=course_id, student_id=body.student_id))
+    db.add(CourseStudent(course_id=course_id, student_id=student.id))
     db.commit()
     return {"detail": "Student enrolled."}
 
@@ -137,18 +137,18 @@ def list_teachers(course_id: uuid.UUID, _: CurrentUser, db: DbDep):
 @router.post("/{course_id}/teachers", status_code=status.HTTP_201_CREATED)
 def assign_teacher(course_id: uuid.UUID, body: AssignTeacherRequest, _: AdminUser, db: DbDep):
     _get_course_or_404(course_id, db)
-    teacher = db.get(TeacherModel, body.teacher_id)
+    teacher = db.scalar(select(TeacherModel).where(TeacherModel.teacher_id == body.teacher_id))
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found.")
     existing = db.scalar(
         select(CourseTeacher).where(
             CourseTeacher.course_id == course_id,
-            CourseTeacher.teacher_id == body.teacher_id,
+            CourseTeacher.teacher_id == teacher.id,
         )
     )
     if existing:
         raise HTTPException(status_code=409, detail="Teacher already assigned.")
-    db.add(CourseTeacher(course_id=course_id, teacher_id=body.teacher_id))
+    db.add(CourseTeacher(course_id=course_id, teacher_id=teacher.id))
     db.commit()
     return {"detail": "Teacher assigned."}
 

@@ -20,10 +20,9 @@ interface Props {
   value?: string;
   onChange?: (value: string) => void;
   placeholder?: string;
-  minHeight?: number;
 }
 
-export function MarkdownInputInner({ value, onChange, placeholder, minHeight = 160 }: Props) {
+export function MarkdownInputInner({ value, onChange, placeholder }: Props) {
   return (
     <MDXEditor
       markdown={value ?? ""}
@@ -50,8 +49,6 @@ export function MarkdownInputInner({ value, onChange, placeholder, minHeight = 1
         }),
       ]}
       contentEditableClassName="mdxeditor-content"
-      // @ts-expect-error — style passthrough supported at runtime
-      style={{ minHeight }}
     />
   );
 }

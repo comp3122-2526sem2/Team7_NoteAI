@@ -27,8 +27,8 @@ class CourseOut(BaseModel):
 
 
 class EnrollStudentRequest(BaseModel):
-    student_id: uuid.UUID
+    student_id: str
 
 
 class AssignTeacherRequest(BaseModel):
-    teacher_id: uuid.UUID
+    teacher_id: str

@@ -84,7 +84,7 @@ export default function CourseSettingsPage({ params }: { params: Promise<{ id: s
   ];
 
   return (
-    <div style={{ maxWidth: 640 }}>
+    <div>
       <Title level={3}>Course Settings</Title>
 
       <Card title="Details" style={{ marginBottom: 24 }}>

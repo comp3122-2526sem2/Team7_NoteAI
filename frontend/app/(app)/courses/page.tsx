@@ -1,41 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { App, Button, Card, Col, Empty, Form, Input, Modal, Row, Typography } from "antd";
+import { Button, Card, Col, Empty, Row, Typography } from "antd";
 import { PlusOutlined, BookOutlined } from "@ant-design/icons";
 import { coursesApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
-import { MarkdownInput } from "@/components/shared/markdown-input";
 
 const { Title, Text, Paragraph } = Typography;
-const { TextArea } = Input;
-
 
 export default function CoursesPage() {
   const { isTeacher } = useAuth();
-  const { message } = App.useApp();
-  const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [form] = Form.useForm();
 
   const { data: courses, isLoading } = useQuery({
     queryKey: ["courses"],
     queryFn: () => coursesApi.list().then((r) => r.data),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: (values: { name: string; description?: string; syllabus?: string }) =>
-      coursesApi.create(values),
-    onSuccess: () => {
-      message.success("Course created");
-      qc.invalidateQueries({ queryKey: ["courses"] });
-      setOpen(false);
-      form.resetFields();
-    },
-    onError: () => message.error("Failed to create course"),
   });
 
   if (isLoading) return <LoadingSpinner />;
@@ -48,9 +28,11 @@ export default function CoursesPage() {
           <Text type="secondary">Your enrolled or assigned courses</Text>
         </div>
         {isTeacher && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-            New Course
-          </Button>
+          <Link href="/courses/new">
+            <Button type="primary" icon={<PlusOutlined />}>
+              New Course
+            </Button>
+          </Link>
         )}
       </div>
 
@@ -85,33 +67,6 @@ export default function CoursesPage() {
           ))}
         </Row>
       )}
-
-      <Modal
-        title="Create Course"
-        open={open}
-        onCancel={() => { setOpen(false); form.resetFields(); }}
-        footer={null}
-        destroyOnClose
-        width={780}
-        styles={{ body: { maxHeight: "75vh", overflowY: "auto", paddingBottom: 8 } }}
-      >
-        <Form form={form} layout="vertical" onFinish={(v) => createMutation.mutate(v)} style={{ marginTop: 16 }}>
-          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="description" label="Description">
-            <TextArea rows={2} />
-          </Form.Item>
-          <Form.Item name="syllabus" label="Syllabus">
-            <MarkdownInput placeholder="Write the course syllabus…" minHeight={200} />
-          </Form.Item>
-          <Form.Item style={{ marginBottom: 0 }}>
-            <Button type="primary" htmlType="submit" block loading={createMutation.isPending}>
-              Create Course
-            </Button>
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   );
 }
