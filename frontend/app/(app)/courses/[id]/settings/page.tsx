@@ -1,24 +1,24 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button, Card, Divider, Form, Input, Space, Table, Typography, message } from "antd";
+import { UserAddOutlined, DeleteOutlined } from "@ant-design/icons";
 import { coursesApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { toast } from "sonner";
-import { Trash2, UserPlus } from "lucide-react";
+import type { User } from "@/lib/api";
+
+const { Title, Text } = Typography;
+const { TextArea } = Input;
 
 export default function CourseSettingsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { isTeacher } = useAuth();
   const qc = useQueryClient();
+  const [detailsForm] = Form.useForm();
+  const [newStudentId, setNewStudentId] = useState("");
 
   const { data: course, isLoading } = useQuery({
     queryKey: ["course", id],
@@ -31,124 +31,118 @@ export default function CourseSettingsPage({ params }: { params: Promise<{ id: s
     enabled: isTeacher,
   });
 
-  const [editForm, setEditForm] = useState<{ name: string; description: string; syllabus: string } | null>(null);
-  const [newStudentId, setNewStudentId] = useState("");
+  useEffect(() => {
+    if (course) {
+      detailsForm.setFieldsValue({
+        name: course.name,
+        description: course.description ?? "",
+        syllabus: course.syllabus ?? "",
+      });
+    }
+  }, [course, detailsForm]);
 
   const updateMutation = useMutation({
-    mutationFn: () => coursesApi.update(id, editForm!),
+    mutationFn: (values: { name: string; description?: string; syllabus?: string }) =>
+      coursesApi.update(id, values),
     onSuccess: () => {
-      toast.success("Course updated");
+      message.success("Course updated");
       qc.invalidateQueries({ queryKey: ["course", id] });
-      setEditForm(null);
     },
-    onError: () => toast.error("Failed to update"),
+    onError: () => message.error("Failed to update"),
   });
 
   const enrollMutation = useMutation({
     mutationFn: () => coursesApi.enrollStudent(id, newStudentId),
     onSuccess: () => {
-      toast.success("Student enrolled");
+      message.success("Student enrolled");
       qc.invalidateQueries({ queryKey: ["course-students", id] });
       setNewStudentId("");
     },
-    onError: () => toast.error("Failed to enroll student"),
+    onError: () => message.error("Failed to enroll student"),
   });
 
   const unenrollMutation = useMutation({
     mutationFn: (studentId: string) => coursesApi.unenrollStudent(id, studentId),
     onSuccess: () => {
-      toast.success("Student removed");
+      message.success("Student removed");
       qc.invalidateQueries({ queryKey: ["course-students", id] });
     },
-    onError: () => toast.error("Failed to remove student"),
+    onError: () => message.error("Failed to remove student"),
   });
 
   if (isLoading) return <LoadingSpinner />;
   if (!course) return <div>Course not found.</div>;
   if (!isTeacher) return <div>Access denied.</div>;
 
-  const form = editForm ?? { name: course.name, description: course.description ?? "", syllabus: course.syllabus ?? "" };
+  const studentColumns = [
+    { title: "Name", dataIndex: "nickname", key: "nickname" },
+    { title: "Username", dataIndex: "username", key: "username", render: (v: string) => `@${v}` },
+    {
+      title: "Action",
+      key: "action",
+      width: 80,
+      render: (_: unknown, record: User) => (
+        <ConfirmDialog
+          title="Remove student?"
+          description={`Remove ${record.nickname} from this course?`}
+          onConfirm={() => unenrollMutation.mutate(record.id)}
+        >
+          <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+        </ConfirmDialog>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <h1 className="text-2xl font-bold">Course Settings</h1>
+    <div style={{ maxWidth: 640 }}>
+      <Title level={3}>Course Settings</Title>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Name</Label>
-            <Input
-              value={form.name}
-              onChange={(e) => setEditForm({ ...form, name: e.target.value })}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <Textarea
-              value={form.description}
-              onChange={(e) => setEditForm({ ...form, description: e.target.value })}
-              rows={2}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Syllabus (Markdown)</Label>
-            <Textarea
-              value={form.syllabus}
-              onChange={(e) => setEditForm({ ...form, syllabus: e.target.value })}
-              rows={5}
-            />
-          </div>
-          <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? "Saving…" : "Save Changes"}
-          </Button>
-        </CardContent>
+      <Card title="Details" style={{ marginBottom: 24 }}>
+        <Form form={detailsForm} layout="vertical" onFinish={(v) => updateMutation.mutate(v)}>
+          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <TextArea rows={2} />
+          </Form.Item>
+          <Form.Item name="syllabus" label="Syllabus (Markdown)">
+            <TextArea rows={5} />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button type="primary" htmlType="submit" loading={updateMutation.isPending}>
+              Save Changes
+            </Button>
+          </Form.Item>
+        </Form>
       </Card>
 
-      <Separator />
+      <Divider />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Students</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex gap-2">
-            <Input
-              placeholder="Student user ID"
-              value={newStudentId}
-              onChange={(e) => setNewStudentId(e.target.value)}
-            />
-            <Button
-              onClick={() => enrollMutation.mutate()}
-              disabled={!newStudentId || enrollMutation.isPending}
-            >
-              <UserPlus className="h-4 w-4 mr-2" />
-              Enroll
-            </Button>
-          </div>
-          {students?.map((s) => (
-            <div key={s.id} className="flex items-center justify-between py-2 border-b last:border-0">
-              <div>
-                <p className="font-medium text-sm">{s.nickname}</p>
-                <p className="text-xs text-muted-foreground">@{s.username}</p>
-              </div>
-              <ConfirmDialog
-                title="Remove student?"
-                description={`Remove ${s.nickname} from this course?`}
-                onConfirm={() => unenrollMutation.mutate(s.id)}
-              >
-                <Button variant="ghost" size="icon" className="text-destructive h-8 w-8">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </ConfirmDialog>
-            </div>
-          ))}
-          {!students?.length && (
-            <p className="text-sm text-muted-foreground">No students enrolled.</p>
-          )}
-        </CardContent>
+      <Card title="Students">
+        <Space.Compact style={{ width: "100%", marginBottom: 16 }}>
+          <Input
+            placeholder="Student user ID"
+            value={newStudentId}
+            onChange={(e) => setNewStudentId(e.target.value)}
+          />
+          <Button
+            type="primary"
+            icon={<UserAddOutlined />}
+            onClick={() => enrollMutation.mutate()}
+            loading={enrollMutation.isPending}
+            disabled={!newStudentId}
+          >
+            Enroll
+          </Button>
+        </Space.Compact>
+        <Table
+          dataSource={students ?? []}
+          columns={studentColumns}
+          rowKey="id"
+          size="small"
+          pagination={false}
+          locale={{ emptyText: "No students enrolled." }}
+        />
       </Card>
     </div>
   );

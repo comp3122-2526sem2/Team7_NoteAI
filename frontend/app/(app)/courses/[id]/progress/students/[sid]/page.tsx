@@ -2,16 +2,14 @@
 
 import { use } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button, Card, Divider, Table, Typography, message } from "antd";
+import { ThunderboltOutlined } from "@ant-design/icons";
 import { progressApi } from "@/lib/api";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { MasteryBadge } from "@/components/shared/mastery-badge";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Separator } from "@/components/ui/separator";
-import { Sparkles } from "lucide-react";
-import { toast } from "sonner";
+
+const { Title, Text } = Typography;
 
 export default function StudentProgressPage({
   params,
@@ -23,99 +21,82 @@ export default function StudentProgressPage({
 
   const { data: progress, isLoading } = useQuery({
     queryKey: ["student-progress", courseId, studentId],
-    queryFn: () =>
-      progressApi.getStudentProgress(courseId, studentId).then((r) => r.data),
+    queryFn: () => progressApi.getStudentProgress(courseId, studentId).then((r) => r.data),
   });
 
   const { data: recommendations } = useQuery({
     queryKey: ["recommendations", courseId, studentId],
-    queryFn: () =>
-      progressApi.getRecommendations(courseId, studentId).then((r) => r.data),
+    queryFn: () => progressApi.getRecommendations(courseId, studentId).then((r) => r.data),
   });
 
   const generateMutation = useMutation({
     mutationFn: () => progressApi.generateRecommendation(courseId, studentId),
     onSuccess: () => {
-      toast.success("Recommendation generated");
+      message.success("Recommendation generated");
       qc.invalidateQueries({ queryKey: ["recommendations", courseId, studentId] });
     },
-    onError: () => toast.error("Failed to generate"),
+    onError: () => message.error("Failed to generate"),
   });
 
   if (isLoading) return <LoadingSpinner />;
 
-  return (
-    <div className="space-y-6 max-w-3xl">
-      <h1 className="text-2xl font-bold">Student Progress Detail</h1>
-      <p className="text-muted-foreground text-sm">Student ID: {studentId}</p>
+  const masteryColumns = [
+    { title: "Topic", dataIndex: "topic", key: "topic" },
+    {
+      title: "Mastery",
+      dataIndex: "mastery_level",
+      key: "mastery",
+      render: (v: "weak" | "developing" | "proficient") => <MasteryBadge level={v} />,
+    },
+    {
+      title: "Last Assessed",
+      dataIndex: "last_assessed_at",
+      key: "assessed",
+      render: (v: string) => (v ? new Date(v).toLocaleDateString() : "—"),
+    },
+  ];
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Topic Mastery</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!progress?.length ? (
-            <p className="text-muted-foreground text-sm">No progress data.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Topic</TableHead>
-                  <TableHead>Mastery</TableHead>
-                  <TableHead>Last Assessed</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {progress.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.topic}</TableCell>
-                    <TableCell>
-                      <MasteryBadge level={p.mastery_level} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {p.last_assessed_at
-                        ? new Date(p.last_assessed_at).toLocaleDateString()
-                        : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
+  return (
+    <div style={{ maxWidth: 800 }}>
+      <Title level={3}>Student Progress Detail</Title>
+      <Text type="secondary">Student ID: {studentId}</Text>
+
+      <Card title="Topic Mastery" style={{ marginTop: 16, marginBottom: 24 }}>
+        <Table
+          dataSource={progress ?? []}
+          columns={masteryColumns}
+          rowKey="id"
+          pagination={false}
+          size="small"
+          locale={{ emptyText: "No progress data." }}
+        />
       </Card>
 
-      <Separator />
+      <Divider />
 
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">AI Recommendations</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>AI Recommendations</Title>
         <Button
-          size="sm"
+          type="primary"
+          icon={<ThunderboltOutlined />}
           onClick={() => generateMutation.mutate()}
-          disabled={generateMutation.isPending}
+          loading={generateMutation.isPending}
         >
-          <Sparkles className="h-4 w-4 mr-1" />
-          {generateMutation.isPending ? "Generating…" : "Generate Recommendation"}
+          Generate Recommendation
         </Button>
       </div>
 
       {!recommendations?.length ? (
-        <p className="text-muted-foreground text-sm">No recommendations yet.</p>
+        <Text type="secondary">No recommendations yet.</Text>
       ) : (
-        <div className="space-y-4">
-          {recommendations.map((r) => (
-            <Card key={r.id}>
-              <CardHeader className="pb-2">
-                <p className="text-xs text-muted-foreground">
-                  {new Date(r.created_at).toLocaleString()}
-                </p>
-              </CardHeader>
-              <CardContent>
-                <MarkdownRenderer content={r.recommendation} />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        recommendations.map((r) => (
+          <Card key={r.id} size="small" style={{ marginBottom: 12 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {new Date(r.created_at).toLocaleString()}
+            </Text>
+            <MarkdownRenderer content={r.recommendation} />
+          </Card>
+        ))
       )}
     </div>
   );

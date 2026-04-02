@@ -1,10 +1,12 @@
-import { Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Spin } from "antd";
 
 export function LoadingSpinner({ className }: { className?: string }) {
   return (
-    <div className={cn("flex items-center justify-center py-12", className)}>
-      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    <div
+      className={className}
+      style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: "48px 0" }}
+    >
+      <Spin size="large" />
     </div>
   );
 }

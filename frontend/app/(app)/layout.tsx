@@ -15,7 +15,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [hydrate]);
 
   useEffect(() => {
-    if (!localStorage.getItem("token")) {
+    if (typeof window !== "undefined" && !localStorage.getItem("token")) {
       router.push("/login");
     }
   }, [router]);
@@ -23,11 +23,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div style={{ display: "flex", minHeight: "100vh" }}>
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <Topbar />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main style={{ flex: 1, padding: 24, overflowY: "auto" }}>
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -1,117 +1,112 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import { Button, Card, Col, Empty, Form, Input, Modal, Row, Typography, message } from "antd";
+import { PlusOutlined, BookOutlined } from "@ant-design/icons";
 import { coursesApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Plus, BookOpen } from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
-import { toast } from "sonner";
+
+const { Title, Text, Paragraph } = Typography;
+const { TextArea } = Input;
 
 export default function CoursesPage() {
   const { isTeacher } = useAuth();
   const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [form] = Form.useForm();
 
   const { data: courses, isLoading } = useQuery({
     queryKey: ["courses"],
     queryFn: () => coursesApi.list().then((r) => r.data),
   });
 
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "", syllabus: "" });
-
   const createMutation = useMutation({
-    mutationFn: () => coursesApi.create(form),
+    mutationFn: (values: { name: string; description?: string; syllabus?: string }) =>
+      coursesApi.create(values),
     onSuccess: () => {
-      toast.success("Course created");
+      message.success("Course created");
       qc.invalidateQueries({ queryKey: ["courses"] });
       setOpen(false);
-      setForm({ name: "", description: "", syllabus: "" });
+      form.resetFields();
     },
-    onError: () => toast.error("Failed to create course"),
+    onError: () => message.error("Failed to create course"),
   });
 
   if (isLoading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <h1 className="text-2xl font-bold">Courses</h1>
-          <p className="text-muted-foreground text-sm">Your enrolled or assigned courses</p>
+          <Title level={3} style={{ margin: 0 }}>Courses</Title>
+          <Text type="secondary">Your enrolled or assigned courses</Text>
         </div>
         {isTeacher && (
-          <>
-          <Button onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
             New Course
           </Button>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Create Course</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <Label>Name</Label>
-                  <Input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Textarea value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={2} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Syllabus (Markdown)</Label>
-                  <Textarea value={form.syllabus} onChange={(e) => setForm((p) => ({ ...p, syllabus: e.target.value }))} rows={4} />
-                </div>
-                <Button
-                  className="w-full"
-                  onClick={() => createMutation.mutate()}
-                  disabled={!form.name || createMutation.isPending}
-                >
-                  {createMutation.isPending ? "Creating…" : "Create Course"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-          </>
         )}
       </div>
 
       {!courses?.length ? (
-        <div className="text-center py-20 text-muted-foreground">
-          <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p className="font-medium">No courses yet</p>
-        </div>
+        <Empty description="No courses yet" />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Row gutter={[16, 16]}>
           {courses.map((course) => (
-            <Card key={course.id} className="hover:shadow-md transition-shadow">
-              <CardHeader>
-                <CardTitle className="text-lg">{course.name}</CardTitle>
-                <CardDescription className="line-clamp-2">
-                  {course.description ?? "No description"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="text-xs text-muted-foreground">
-                Created {new Date(course.created_at).toLocaleDateString()}
-              </CardContent>
-              <CardFooter>
-                <Button variant="outline" size="sm" className="w-full" render={<Link href={`/courses/${course.id}`} />}>
-                  View Course
-                </Button>
-              </CardFooter>
-            </Card>
+            <Col key={course.id} xs={24} sm={12} lg={8}>
+              <Card
+                hoverable
+                actions={[
+                  <Link key="view" href={`/courses/${course.id}`}>
+                    <Button type="link" size="small">View Course</Button>
+                  </Link>,
+                ]}
+              >
+                <Card.Meta
+                  avatar={<BookOutlined style={{ fontSize: 24, color: "#1677ff" }} />}
+                  title={course.name}
+                  description={
+                    <Paragraph ellipsis={{ rows: 2 }} type="secondary" style={{ margin: 0 }}>
+                      {course.description ?? "No description"}
+                    </Paragraph>
+                  }
+                />
+                <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: "block" }}>
+                  Created {new Date(course.created_at).toLocaleDateString()}
+                </Text>
+              </Card>
+            </Col>
           ))}
-        </div>
+        </Row>
       )}
+
+      <Modal
+        title="Create Course"
+        open={open}
+        onCancel={() => { setOpen(false); form.resetFields(); }}
+        footer={null}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" onFinish={(v) => createMutation.mutate(v)} style={{ marginTop: 16 }}>
+          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <TextArea rows={2} />
+          </Form.Item>
+          <Form.Item name="syllabus" label="Syllabus (Markdown)">
+            <TextArea rows={4} />
+          </Form.Item>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button type="primary" htmlType="submit" block loading={createMutation.isPending}>
+              Create Course
+            </Button>
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

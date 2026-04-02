@@ -1,87 +1,72 @@
 "use client";
 
-import { Suspense } from "react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { toast } from "sonner";
+import { Button, Card, Form, Input, Typography, message } from "antd";
+import { LockOutlined, UserOutlined } from "@ant-design/icons";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+
+const { Title, Text } = Typography;
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAuth();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (values: { username: string; password: string }) => {
     setLoading(true);
     try {
-      await login(username, password);
+      await login(values.username, values.password);
       const from = searchParams.get("from") ?? "/courses";
       router.push(from);
     } catch {
-      toast.error("Invalid username or password");
+      message.error("Invalid username or password");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="username">Username</Label>
-          <Input
-            id="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoComplete="username"
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
-          <Input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-          />
-        </div>
-      </CardContent>
-      <CardFooter className="flex flex-col gap-3">
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "Signing in…" : "Sign in"}
+    <Form layout="vertical" onFinish={handleSubmit} requiredMark={false}>
+      <Form.Item name="username" label="Username" rules={[{ required: true }]}>
+        <Input prefix={<UserOutlined />} placeholder="Username" size="large" />
+      </Form.Item>
+      <Form.Item name="password" label="Password" rules={[{ required: true }]}>
+        <Input.Password prefix={<LockOutlined />} placeholder="Password" size="large" />
+      </Form.Item>
+      <Form.Item style={{ marginBottom: 8 }}>
+        <Button type="primary" htmlType="submit" size="large" block loading={loading}>
+          Sign in
         </Button>
-        <p className="text-sm text-muted-foreground text-center">
-          No account?{" "}
-          <Link href="/register" className="underline underline-offset-4">
-            Register
-          </Link>
-        </p>
-      </CardFooter>
-    </form>
+      </Form.Item>
+      <div style={{ textAlign: "center" }}>
+        <Text type="secondary">No account? </Text>
+        <Link href="/register">Register</Link>
+      </div>
+    </Form>
   );
 }
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/40 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">NoteAI</CardTitle>
-          <CardDescription>Sign in to your account</CardDescription>
-        </CardHeader>
-        <Suspense fallback={<CardContent><p className="text-sm text-muted-foreground">Loading…</p></CardContent>}>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#f5f5f5",
+        padding: 16,
+      }}
+    >
+      <Card style={{ width: "100%", maxWidth: 400 }}>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <Title level={2} style={{ margin: 0 }}>NoteAI</Title>
+          <Text type="secondary">Sign in to your account</Text>
+        </div>
+        <Suspense fallback={<div>Loading…</div>}>
           <LoginForm />
         </Suspense>
       </Card>

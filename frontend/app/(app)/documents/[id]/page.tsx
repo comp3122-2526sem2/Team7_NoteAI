@@ -2,16 +2,14 @@
 
 import { use } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Alert, Button, Card, Divider, Space, Spin, Tag, Typography, message } from "antd";
+import { ThunderboltOutlined } from "@ant-design/icons";
 import { documentsApi } from "@/lib/api";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Sparkles } from "lucide-react";
-import { toast } from "sonner";
+
+const { Title, Text } = Typography;
 
 export default function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -27,76 +25,77 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
   const aiCheckMutation = useMutation({
     mutationFn: () => documentsApi.runAiCheck(id),
     onSuccess: () => {
-      toast.success("AI check complete");
+      message.success("AI check complete");
       qc.invalidateQueries({ queryKey: ["document", id] });
     },
-    onError: () => toast.error("AI check failed"),
+    onError: () => message.error("AI check failed"),
   });
 
   if (isLoading) return <LoadingSpinner />;
   if (!doc) return <div>Document not found.</div>;
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div className="flex items-start justify-between gap-4">
+    <div style={{ maxWidth: 900 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <h1 className="text-xl font-bold truncate">{doc.original_filename}</h1>
-          <div className="flex items-center gap-2 mt-1">
-            <Badge variant="outline" className="capitalize text-xs">{doc.document_type}</Badge>
-            <Badge variant="secondary" className="uppercase text-xs">{doc.original_file_type}</Badge>
-          </div>
+          <Title level={3} style={{ margin: 0, wordBreak: "break-all" }}>{doc.original_filename}</Title>
+          <Space style={{ marginTop: 8 }}>
+            <StatusBadge status={doc.conversion_status} />
+            <Tag>{doc.document_type}</Tag>
+            <Tag>{doc.original_file_type.toUpperCase()}</Tag>
+          </Space>
         </div>
-        <StatusBadge status={doc.conversion_status} />
       </div>
 
       {doc.conversion_status === "pending" && (
-        <Card>
-          <CardContent className="pt-4 flex items-center gap-3 text-muted-foreground">
-            <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-            Converting document…
-          </CardContent>
-        </Card>
+        <Alert
+          icon={<Spin size="small" />}
+          type="info"
+          message="Converting document…"
+          showIcon
+          style={{ marginBottom: 24 }}
+        />
       )}
 
       {doc.conversion_status === "completed" && (
         <>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Document Content</CardTitle>
+          <Card
+            title="Document Content"
+            extra={
               <Button
-                size="sm"
+                icon={<ThunderboltOutlined />}
+                type="primary"
+                size="small"
                 onClick={() => aiCheckMutation.mutate()}
-                disabled={aiCheckMutation.isPending}
+                loading={aiCheckMutation.isPending}
               >
-                <Sparkles className="h-4 w-4 mr-1" />
-                {aiCheckMutation.isPending ? "Checking…" : "Run AI Check"}
+                Run AI Check
               </Button>
-            </CardHeader>
-            <CardContent>
-              {doc.converted_markdown ? (
-                <MarkdownRenderer
-                  content={doc.converted_markdown}
-                  cssStyle={doc.css_style ?? undefined}
-                />
-              ) : (
-                <p className="text-muted-foreground text-sm">No content available.</p>
-              )}
-            </CardContent>
+            }
+            style={{ marginBottom: 24 }}
+          >
+            {doc.converted_markdown ? (
+              <MarkdownRenderer
+                content={doc.converted_markdown}
+                cssStyle={doc.css_style ?? undefined}
+              />
+            ) : (
+              <Text type="secondary">No content available.</Text>
+            )}
           </Card>
 
           {doc.ai_format_feedback && (
             <>
-              <Separator />
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-primary" />
+              <Divider />
+              <Card
+                title={
+                  <span>
+                    <ThunderboltOutlined style={{ color: "#1677ff", marginRight: 8 }} />
                     AI Format Feedback
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <MarkdownRenderer content={doc.ai_format_feedback} />
-                </CardContent>
+                  </span>
+                }
+              >
+                <MarkdownRenderer content={doc.ai_format_feedback} />
               </Card>
             </>
           )}
@@ -104,11 +103,11 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
       )}
 
       {doc.conversion_status === "failed" && (
-        <Card>
-          <CardContent className="pt-4 text-destructive">
-            Document conversion failed. Please try uploading again.
-          </CardContent>
-        </Card>
+        <Alert
+          type="error"
+          message="Document conversion failed. Please try uploading again."
+          showIcon
+        />
       )}
     </div>
   );

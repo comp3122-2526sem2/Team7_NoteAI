@@ -3,21 +3,21 @@
 import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import {
+  Button, DatePicker, Form, Input, InputNumber, Modal, Select,
+  Space, Table, Typography, message,
+} from "antd";
+import { PlusOutlined, EyeOutlined, DeleteOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
 import { assignmentsApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Trash2, Eye } from "lucide-react";
-import { toast } from "sonner";
-import type { AssignmentCreateData } from "@/lib/api";
+import type { Assignment, AssignmentCreateData } from "@/lib/api";
+
+const { Title } = Typography;
+const { TextArea } = Input;
 
 const TYPES = ["quiz", "homework", "project", "exam"] as const;
 
@@ -25,152 +25,140 @@ export default function AssignmentsPage({ params }: { params: Promise<{ id: stri
   const { id: courseId } = use(params);
   const { isTeacher } = useAuth();
   const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [form] = Form.useForm();
 
   const { data: assignments, isLoading } = useQuery({
     queryKey: ["assignments", courseId],
     queryFn: () => assignmentsApi.list(courseId).then((r) => r.data),
   });
 
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<AssignmentCreateData>({
-    name: "",
-    description: "",
-    assignment_type: "homework",
-    topic: "",
-    due_date: "",
-    max_score: undefined,
-  });
-
   const createMutation = useMutation({
-    mutationFn: () => assignmentsApi.create(courseId, form),
+    mutationFn: (values: AssignmentCreateData & { due_date_picker?: dayjs.Dayjs }) => {
+      const { due_date_picker, ...rest } = values;
+      return assignmentsApi.create(courseId, {
+        ...rest,
+        due_date: due_date_picker?.toISOString(),
+      });
+    },
     onSuccess: () => {
-      toast.success("Assignment created");
+      message.success("Assignment created");
       qc.invalidateQueries({ queryKey: ["assignments", courseId] });
       setOpen(false);
+      form.resetFields();
     },
-    onError: () => toast.error("Failed to create assignment"),
+    onError: () => message.error("Failed to create assignment"),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (assignmentId: string) => assignmentsApi.delete(courseId, assignmentId),
+    mutationFn: (id: string) => assignmentsApi.delete(courseId, id),
     onSuccess: () => {
-      toast.success("Assignment deleted");
+      message.success("Deleted");
       qc.invalidateQueries({ queryKey: ["assignments", courseId] });
     },
-    onError: () => toast.error("Failed to delete"),
+    onError: () => message.error("Failed to delete"),
   });
 
   if (isLoading) return <LoadingSpinner />;
 
+  const columns = [
+    { title: "Name", dataIndex: "name", key: "name" },
+    {
+      title: "Type",
+      dataIndex: "assignment_type",
+      key: "type",
+      render: (v: string) => <StatusBadge status={v as "quiz"} />,
+    },
+    { title: "Topic", dataIndex: "topic", key: "topic", render: (v: string) => v ?? "—" },
+    {
+      title: "Due Date",
+      dataIndex: "due_date",
+      key: "due_date",
+      render: (v: string) => (v ? new Date(v).toLocaleDateString() : "—"),
+    },
+    {
+      title: "Max Score",
+      dataIndex: "max_score",
+      key: "max_score",
+      render: (v: number) => v ?? "—",
+    },
+    {
+      title: "Actions",
+      key: "actions",
+      width: 100,
+      render: (_: unknown, record: Assignment) => (
+        <Space>
+          <Link href={`/courses/${courseId}/assignments/${record.id}`}>
+            <Button type="text" icon={<EyeOutlined />} size="small" />
+          </Link>
+          {isTeacher && (
+            <ConfirmDialog
+              title="Delete assignment?"
+              onConfirm={() => deleteMutation.mutate(record.id)}
+            >
+              <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+            </ConfirmDialog>
+          )}
+        </Space>
+      ),
+    },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Assignments</h1>
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <Title level={3} style={{ margin: 0 }}>Assignments</Title>
         {isTeacher && (
-          <>
-          <Button onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
             New Assignment
           </Button>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Create Assignment</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                  <Label>Name</Label>
-                  <Input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Textarea value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={2} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Type</Label>
-                    <Select value={form.assignment_type} onValueChange={(v) => setForm((p) => ({ ...p, assignment_type: v as AssignmentCreateData["assignment_type"] }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {TYPES.map((t) => (
-                          <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Max Score</Label>
-                    <Input type="number" value={form.max_score ?? ""} onChange={(e) => setForm((p) => ({ ...p, max_score: e.target.value ? Number(e.target.value) : undefined }))} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Topic</Label>
-                    <Input value={form.topic ?? ""} onChange={(e) => setForm((p) => ({ ...p, topic: e.target.value }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Due Date</Label>
-                    <Input type="date" value={form.due_date ?? ""} onChange={(e) => setForm((p) => ({ ...p, due_date: e.target.value }))} />
-                  </div>
-                </div>
-                <Button className="w-full" onClick={() => createMutation.mutate()} disabled={!form.name || createMutation.isPending}>
-                  {createMutation.isPending ? "Creating…" : "Create"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-          </>
         )}
       </div>
 
-      {!assignments?.length ? (
-        <div className="text-center py-20 text-muted-foreground">No assignments yet.</div>
-      ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Topic</TableHead>
-                <TableHead>Due Date</TableHead>
-                <TableHead>Max Score</TableHead>
-                <TableHead className="w-24">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {assignments.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell className="font-medium">{a.name}</TableCell>
-                  <TableCell><StatusBadge status={a.assignment_type as "pending"} /></TableCell>
-                  <TableCell className="text-muted-foreground">{a.topic ?? "—"}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {a.due_date ? new Date(a.due_date).toLocaleDateString() : "—"}
-                  </TableCell>
-                  <TableCell>{a.max_score ?? "—"}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" render={<Link href={`/courses/${courseId}/assignments/${a.id}`} />}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      {isTeacher && (
-                        <ConfirmDialog
-                          title="Delete assignment?"
-                          onConfirm={() => deleteMutation.mutate(a.id)}
-                        >
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </ConfirmDialog>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <Table
+        dataSource={assignments ?? []}
+        columns={columns}
+        rowKey="id"
+        locale={{ emptyText: "No assignments yet." }}
+      />
+
+      <Modal
+        title="Create Assignment"
+        open={open}
+        onCancel={() => { setOpen(false); form.resetFields(); }}
+        footer={null}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" onFinish={(v) => createMutation.mutate(v)} style={{ marginTop: 16 }}>
+          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <TextArea rows={2} />
+          </Form.Item>
+          <Space style={{ width: "100%" }} align="start">
+            <Form.Item name="assignment_type" label="Type" initialValue="homework" rules={[{ required: true }]}>
+              <Select style={{ width: 160 }} options={TYPES.map((t) => ({ value: t, label: t }))} />
+            </Form.Item>
+            <Form.Item name="max_score" label="Max Score">
+              <InputNumber min={0} style={{ width: 120 }} />
+            </Form.Item>
+          </Space>
+          <Space style={{ width: "100%" }} align="start">
+            <Form.Item name="topic" label="Topic">
+              <Input style={{ width: 160 }} />
+            </Form.Item>
+            <Form.Item name="due_date_picker" label="Due Date">
+              <DatePicker style={{ width: 160 }} />
+            </Form.Item>
+          </Space>
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button type="primary" htmlType="submit" block loading={createMutation.isPending}>
+              Create
+            </Button>
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

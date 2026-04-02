@@ -1,12 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { Card, Empty, Table, Typography } from "antd";
 import { progressApi, type StudentProgress } from "@/lib/api";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { MasteryBadge } from "@/components/shared/mastery-badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { TrendingUp } from "lucide-react";
+
+const { Title, Text } = Typography;
 
 export default function MyProgressPage() {
   const { data: progress, isLoading } = useQuery({
@@ -16,7 +16,6 @@ export default function MyProgressPage() {
 
   if (isLoading) return <LoadingSpinner />;
 
-  // Group by course
   const byCourse = (progress ?? []).reduce(
     (acc, p) => {
       if (!acc[p.course_id]) acc[p.course_id] = [];
@@ -26,50 +25,45 @@ export default function MyProgressPage() {
     {} as Record<string, StudentProgress[]>
   );
 
+  const masteryColumns = [
+    { title: "Topic", dataIndex: "topic", key: "topic" },
+    {
+      title: "Mastery",
+      dataIndex: "mastery_level",
+      key: "mastery",
+      render: (v: "weak" | "developing" | "proficient") => <MasteryBadge level={v} />,
+    },
+    {
+      title: "Last Assessed",
+      dataIndex: "last_assessed_at",
+      key: "assessed",
+      render: (v: string) => (v ? new Date(v).toLocaleDateString() : "—"),
+    },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">My Progress</h1>
-        <p className="text-muted-foreground text-sm">Your topic mastery across all courses</p>
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <Title level={3} style={{ margin: 0 }}>My Progress</Title>
+        <Text type="secondary">Your topic mastery across all courses</Text>
       </div>
 
       {!progress?.length ? (
-        <div className="text-center py-20 text-muted-foreground">
-          <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p>No progress data yet.</p>
-        </div>
+        <Empty description="No progress data yet." />
       ) : (
         Object.entries(byCourse).map(([courseId, rows]) => (
-          <Card key={courseId}>
-            <CardHeader>
-              <CardTitle className="text-base">Course: {courseId.slice(0, 8)}…</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Topic</TableHead>
-                    <TableHead>Mastery</TableHead>
-                    <TableHead>Last Assessed</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows?.map((p) => (
-                    <TableRow key={p.id}>
-                      <TableCell className="font-medium">{p.topic}</TableCell>
-                      <TableCell>
-                        <MasteryBadge level={p.mastery_level} />
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {p.last_assessed_at
-                          ? new Date(p.last_assessed_at).toLocaleDateString()
-                          : "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
+          <Card
+            key={courseId}
+            title={`Course: ${courseId.slice(0, 8)}…`}
+            style={{ marginBottom: 16 }}
+          >
+            <Table
+              dataSource={rows ?? []}
+              columns={masteryColumns}
+              rowKey="id"
+              pagination={false}
+              size="small"
+            />
           </Card>
         ))
       )}

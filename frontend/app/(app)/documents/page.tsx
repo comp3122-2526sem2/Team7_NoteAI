@@ -2,16 +2,15 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { Button, Card, Col, Empty, Row, Space, Typography, message } from "antd";
+import { EyeOutlined, DeleteOutlined } from "@ant-design/icons";
 import { documentsApi } from "@/lib/api";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { FileUpload } from "@/components/shared/file-upload";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { FileText, Trash2, Eye } from "lucide-react";
-import { toast } from "sonner";
+
+const { Title, Text } = Typography;
 
 export default function DocumentsPage() {
   const qc = useQueryClient();
@@ -28,82 +27,78 @@ export default function DocumentsPage() {
       return documentsApi.upload(formData);
     },
     onSuccess: () => {
-      toast.success("Document uploaded");
+      message.success("Document uploaded");
       qc.invalidateQueries({ queryKey: ["documents"] });
     },
-    onError: () => toast.error("Upload failed"),
+    onError: () => message.error("Upload failed"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => documentsApi.delete(id),
     onSuccess: () => {
-      toast.success("Deleted");
+      message.success("Deleted");
       qc.invalidateQueries({ queryKey: ["documents"] });
     },
-    onError: () => toast.error("Failed to delete"),
+    onError: () => message.error("Failed to delete"),
   });
 
   if (isLoading) return <LoadingSpinner />;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Documents</h1>
-        <p className="text-muted-foreground text-sm">Upload PDF or DOCX files for AI format checking</p>
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <Title level={3} style={{ margin: 0 }}>Documents</Title>
+        <Text type="secondary">Upload PDF or DOCX files for AI format checking</Text>
       </div>
 
-      <FileUpload
-        accept=".pdf,.docx"
-        onUpload={async (file) => { await uploadMutation.mutateAsync(file); }}
-      />
+      <div style={{ marginBottom: 32 }}>
+        <FileUpload
+          accept=".pdf,.docx"
+          onUpload={async (file) => { await uploadMutation.mutateAsync(file); }}
+        />
+      </div>
 
       {!documents?.length ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <FileText className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p>No documents uploaded yet.</p>
-        </div>
+        <Empty description="No documents uploaded yet." />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Row gutter={[16, 16]}>
           {documents.map((doc) => (
-            <Card key={doc.id}>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="text-sm font-medium truncate">
-                    {doc.original_filename}
-                  </CardTitle>
-                  <StatusBadge status={doc.conversion_status} />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs capitalize">
-                    {doc.document_type}
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs uppercase">
-                    {doc.original_file_type}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">
+            <Col key={doc.id} xs={24} sm={12} lg={8}>
+              <Card
+                hoverable
+                actions={[
+                  <Link key="view" href={`/documents/${doc.id}`}>
+                    <Button type="link" icon={<EyeOutlined />} size="small">View</Button>
+                  </Link>,
+                  <ConfirmDialog
+                    key="delete"
+                    title="Delete document?"
+                    onConfirm={() => deleteMutation.mutate(doc.id)}
+                  >
+                    <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+                  </ConfirmDialog>,
+                ]}
+              >
+                <Card.Meta
+                  title={
+                    <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>
+                      {doc.original_filename}
+                    </span>
+                  }
+                  description={
+                    <Space size={4} wrap>
+                      <StatusBadge status={doc.conversion_status} />
+                      <Text type="secondary" style={{ fontSize: 11 }}>{doc.original_file_type.toUpperCase()}</Text>
+                    </Space>
+                  }
+                />
+                <Text type="secondary" style={{ fontSize: 11, marginTop: 8, display: "block" }}>
                   {new Date(doc.created_at).toLocaleDateString()}
-                </p>
-              </CardContent>
-              <CardFooter className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1" render={<Link href={`/documents/${doc.id}`} />}>
-                  <Eye className="h-3 w-3 mr-1" />
-                  View
-                </Button>
-                <ConfirmDialog
-                  title="Delete document?"
-                  onConfirm={() => deleteMutation.mutate(doc.id)}
-                >
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </ConfirmDialog>
-              </CardFooter>
-            </Card>
+                </Text>
+              </Card>
+            </Col>
           ))}
-        </div>
+        </Row>
       )}
     </div>
   );
