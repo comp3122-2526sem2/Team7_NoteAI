@@ -2,8 +2,14 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Button, Card, Col, Empty, Row, Typography } from "antd";
-import { PlusOutlined, BookOutlined } from "@ant-design/icons";
+import { Button, Card, Col, Empty, Row, Tooltip, Typography } from "antd";
+import {
+  PlusOutlined,
+  BookOutlined,
+  UnorderedListOutlined,
+  LineChartOutlined,
+  EyeOutlined,
+} from "@ant-design/icons";
 import { coursesApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
@@ -45,14 +51,39 @@ export default function CoursesPage() {
               <Card
                 hoverable
                 actions={[
-                  <Link key="view" href={`/courses/${course.id}`}>
-                    <Button type="link" size="small">View Course</Button>
-                  </Link>,
+                  <Tooltip key="view" title="Overview">
+                    <Link href={`/courses/${course.id}`}>
+                      <Button type="text" size="small" icon={<EyeOutlined />}>Overview</Button>
+                    </Link>
+                  </Tooltip>,
+                  <Tooltip key="assignments" title="Assignments">
+                    <Link href={`/courses/${course.id}/assignments`}>
+                      <Button type="text" size="small" icon={<UnorderedListOutlined />}>Assignments</Button>
+                    </Link>
+                  </Tooltip>,
+                  <Tooltip key="chapters" title="Chapters">
+                    <Link href={`/courses/${course.id}/chapters`}>
+                      <Button type="text" size="small" icon={<BookOutlined />}>Chapters</Button>
+                    </Link>
+                  </Tooltip>,
+                  ...(isTeacher
+                    ? [
+                        <Tooltip key="progress" title="Student Progress">
+                          <Link href={`/courses/${course.id}/progress`}>
+                            <Button type="text" size="small" icon={<LineChartOutlined />}>Progress</Button>
+                          </Link>
+                        </Tooltip>,
+                      ]
+                    : []),
                 ]}
               >
                 <Card.Meta
                   avatar={<BookOutlined style={{ fontSize: 24, color: "#1677ff" }} />}
-                  title={course.name}
+                  title={
+                    <Link href={`/courses/${course.id}`} style={{ color: "inherit" }}>
+                      {course.name}
+                    </Link>
+                  }
                   description={
                     <Paragraph ellipsis={{ rows: 2 }} type="secondary" style={{ margin: 0 }}>
                       {course.description ?? "No description"}

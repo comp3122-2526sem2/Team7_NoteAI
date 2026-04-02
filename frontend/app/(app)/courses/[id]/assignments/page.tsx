@@ -7,9 +7,9 @@ import {
   App, Button, DatePicker, Form, Input, InputNumber, Modal, Select,
   Space, Table, Typography,
 } from "antd";
-import { PlusOutlined, EyeOutlined, DeleteOutlined } from "@ant-design/icons";
+import { PlusOutlined, EyeOutlined, DeleteOutlined, BookOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
-import { assignmentsApi } from "@/lib/api";
+import { assignmentsApi, chaptersApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -33,6 +33,13 @@ export default function AssignmentsPage({ params }: { params: Promise<{ id: stri
     queryKey: ["assignments", courseId],
     queryFn: () => assignmentsApi.list(courseId).then((r) => r.data),
   });
+
+  const { data: chapters } = useQuery({
+    queryKey: ["chapters", courseId],
+    queryFn: () => chaptersApi.list(courseId).then((r) => r.data),
+  });
+
+  const chapterMap = Object.fromEntries((chapters ?? []).map((c) => [c.id, c]));
 
   const createMutation = useMutation({
     mutationFn: (values: AssignmentCreateData & { due_date_picker?: dayjs.Dayjs }) => {
@@ -64,6 +71,21 @@ export default function AssignmentsPage({ params }: { params: Promise<{ id: stri
 
   const columns = [
     { title: "Name", dataIndex: "name", key: "name" },
+    {
+      title: "Chapter",
+      dataIndex: "chapter_id",
+      key: "chapter",
+      render: (chapterId?: string) =>
+        chapterId && chapterMap[chapterId] ? (
+          <Link href={`/courses/${courseId}/chapters/${chapterId}`}>
+            <Button type="link" size="small" icon={<BookOutlined />} style={{ padding: 0 }}>
+              {chapterMap[chapterId].title}
+            </Button>
+          </Link>
+        ) : (
+          <span style={{ color: "#ccc" }}>—</span>
+        ),
+    },
     {
       title: "Type",
       dataIndex: "assignment_type",

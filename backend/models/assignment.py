@@ -1,4 +1,5 @@
 import enum
+import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, String, Text
@@ -10,6 +11,7 @@ from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from .user import StudentUser
     from .course import Course
+    from .chapter import Chapter
 
 
 class AssignmentType(str, enum.Enum):
@@ -33,6 +35,11 @@ class Assignment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("course.id", ondelete="CASCADE"),
         nullable=False,
     )
+    chapter_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chapter.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     assignment_type: Mapped[AssignmentType] = mapped_column(
@@ -45,6 +52,7 @@ class Assignment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     max_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     course: Mapped["Course"] = relationship(back_populates="assignments")
+    chapter: Mapped[Optional["Chapter"]] = relationship(back_populates="assignments")
     course_assignments: Mapped[list["CourseAssignment"]] = relationship(
         back_populates="assignment", cascade="all, delete-orphan"
     )

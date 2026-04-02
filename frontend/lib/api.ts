@@ -115,55 +115,34 @@ export const assignmentsApi = {
     ),
 };
 
-// ── Lesson Plans ──────────────────────────────────────────────────────────────
-export const lessonPlansApi = {
+// ── Chapters ──────────────────────────────────────────────────────────────────
+export const chaptersApi = {
   list: (courseId: string) =>
-    api.get<LessonPlan[]>(`/courses/${courseId}/lesson-plans`),
-  get: (courseId: string, planId: string) =>
-    api.get<LessonPlan>(`/courses/${courseId}/lesson-plans/${planId}`),
-  create: (courseId: string, data: LessonPlanCreateData) =>
-    api.post<LessonPlan>(`/courses/${courseId}/lesson-plans`, data),
-  update: (courseId: string, planId: string, data: Partial<LessonPlanCreateData>) =>
-    api.put<LessonPlan>(`/courses/${courseId}/lesson-plans/${planId}`, data),
-  delete: (courseId: string, planId: string) =>
-    api.delete(`/courses/${courseId}/lesson-plans/${planId}`),
-  listTopics: (courseId: string, planId: string) =>
-    api.get<Topic[]>(`/courses/${courseId}/lesson-plans/${planId}/topics`),
-  addTopic: (courseId: string, planId: string, data: TopicCreateData) =>
-    api.post<Topic>(`/courses/${courseId}/lesson-plans/${planId}/topics`, data),
-  updateTopic: (
-    courseId: string,
-    planId: string,
-    topicId: string,
-    data: Partial<TopicCreateData>
-  ) =>
-    api.put<Topic>(
-      `/courses/${courseId}/lesson-plans/${planId}/topics/${topicId}`,
-      data
+    api.get<Chapter[]>(`/courses/${courseId}/chapters`),
+  get: (courseId: string, chapterId: string) =>
+    api.get<Chapter>(`/courses/${courseId}/chapters/${chapterId}`),
+  create: (courseId: string, data: ChapterCreateData) =>
+    api.post<Chapter>(`/courses/${courseId}/chapters`, data),
+  update: (courseId: string, chapterId: string, data: Partial<ChapterCreateData>) =>
+    api.put<Chapter>(`/courses/${courseId}/chapters/${chapterId}`, data),
+  delete: (courseId: string, chapterId: string) =>
+    api.delete(`/courses/${courseId}/chapters/${chapterId}`),
+  getAIComment: (courseId: string, chapterId: string) =>
+    api.get<ChapterAIComment | null>(`/courses/${courseId}/chapters/${chapterId}/ai-comment`),
+  generateAIComment: (courseId: string, chapterId: string) =>
+    api.post<ChapterAIComment>(`/courses/${courseId}/chapters/${chapterId}/ai-comment/generate`),
+  aiCommentStreamUrl: (courseId: string, chapterId: string) =>
+    `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/courses/${courseId}/chapters/${chapterId}/ai-comment/stream`,
+  listDocuments: (courseId: string, chapterId: string) =>
+    api.get<Document[]>(`/courses/${courseId}/chapters/${chapterId}/documents`),
+  uploadDocument: (courseId: string, chapterId: string, formData: FormData) =>
+    api.post<Document>(
+      `/courses/${courseId}/chapters/${chapterId}/documents/upload`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
     ),
-  deleteTopic: (courseId: string, planId: string, topicId: string) =>
-    api.delete(
-      `/courses/${courseId}/lesson-plans/${planId}/topics/${topicId}`
-    ),
-  listVersions: (courseId: string, planId: string) =>
-    api.get<LessonPlanVersion[]>(
-      `/courses/${courseId}/lesson-plans/${planId}/versions`
-    ),
-  restoreVersion: (courseId: string, planId: string, versionId: string) =>
-    api.post<LessonPlan>(
-      `/courses/${courseId}/lesson-plans/${planId}/versions/${versionId}/restore`
-    ),
-  aiGenerate: (
-    courseId: string,
-    planId: string,
-    data: { prompt: string; mode?: string; session_id?: string }
-  ) =>
-    api.post<LessonPlan>(
-      `/courses/${courseId}/lesson-plans/${planId}/ai-generate`,
-      data
-    ),
-  aiStreamUrl: (courseId: string, planId: string) =>
-    `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/courses/${courseId}/lesson-plans/${planId}/ai-stream`,
+  deleteDocument: (courseId: string, chapterId: string, docId: string) =>
+    api.delete(`/courses/${courseId}/chapters/${chapterId}/documents/${docId}`),
 };
 
 // ── Documents ─────────────────────────────────────────────────────────────────
@@ -226,9 +205,35 @@ export interface Course {
   updated_at: string;
 }
 
+export interface Chapter {
+  id: string;
+  course_id: string;
+  title: string;
+  description?: string;
+  order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChapterCreateData {
+  title: string;
+  description?: string;
+  order?: number;
+}
+
+export interface ChapterAIComment {
+  id: string;
+  chapter_id: string;
+  student_id: string;
+  comment: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Assignment {
   id: string;
   course_id: string;
+  chapter_id?: string;
   name: string;
   description?: string;
   assignment_type: "quiz" | "homework" | "project" | "exam";
@@ -246,6 +251,7 @@ export interface AssignmentCreateData {
   topic?: string;
   due_date?: string;
   max_score?: number;
+  chapter_id?: string;
 }
 
 export interface Submission {
@@ -262,52 +268,11 @@ export interface Submission {
   updated_at: string;
 }
 
-export interface LessonPlan {
-  id: string;
-  course_id: string;
-  title: string;
-  content?: string;
-  css_style?: string;
-  pdf_export_path?: string;
-  status: "draft" | "published" | "archived";
-  created_by: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface LessonPlanCreateData {
-  title: string;
-  content?: string;
-  css_style?: string;
-  status?: "draft" | "published" | "archived";
-}
-
-export interface Topic {
-  id: string;
-  lesson_plan_id: string;
-  topic: string;
-  teaching_method?: string;
-  teaching_content?: string;
-}
-
-export interface TopicCreateData {
-  topic: string;
-  teaching_method?: string;
-  teaching_content?: string;
-}
-
-export interface LessonPlanVersion {
-  id: string;
-  lesson_plan_id: string;
-  snapshot_content: string;
-  saved_by: string;
-  created_at: string;
-}
-
 export interface Document {
   id: string;
   uploaded_by: string;
   course_id?: string;
+  chapter_id?: string;
   document_type: "notice" | "exam" | "worksheet" | "other";
   original_filename: string;
   original_file_type: string;

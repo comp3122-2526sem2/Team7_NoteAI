@@ -10,6 +10,7 @@ from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from .user import TeacherUser
     from .course import Course
+    from .chapter import Chapter
 
 
 class DocumentType(str, enum.Enum):
@@ -38,6 +39,12 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("course.id", ondelete="SET NULL"),
         nullable=True,
     )
+    chapter_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chapter.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    anythingllm_location: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     document_type: Mapped[DocumentType] = mapped_column(
         Enum(DocumentType), nullable=False
     )
@@ -53,3 +60,4 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     uploader: Mapped[Optional["TeacherUser"]] = relationship(back_populates="documents")
     course: Mapped[Optional["Course"]] = relationship(back_populates="documents")
+    chapter: Mapped[Optional["Chapter"]] = relationship(back_populates="documents")

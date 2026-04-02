@@ -3,8 +3,12 @@
 import { use } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Button, Card, Tabs, Typography } from "antd";
-import { SettingOutlined, UnorderedListOutlined, BookOutlined } from "@ant-design/icons";
+import { Button, Card, Col, Row, Typography } from "antd";
+import {
+  SettingOutlined,
+  BookOutlined,
+  LineChartOutlined,
+} from "@ant-design/icons";
 import { coursesApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
@@ -24,55 +28,20 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
   if (isLoading) return <LoadingSpinner />;
   if (!course) return <div>Course not found.</div>;
 
-  const tabItems = [
+  const navItems = [
     {
-      key: "overview",
-      label: "Overview",
-      children: (
-        <Card>
-          <Title level={5}>Syllabus</Title>
-          {course.syllabus ? (
-            <MarkdownRenderer content={course.syllabus} />
-          ) : (
-            <Text type="secondary">No syllabus provided.</Text>
-          )}
-        </Card>
-      ),
-    },
-    {
-      key: "assignments",
-      label: "Assignments",
-      children: (
-        <div>
-          <Link href={`/courses/${id}/assignments`}>
-            <Button icon={<UnorderedListOutlined />}>View All Assignments</Button>
-          </Link>
-        </div>
-      ),
+      key: "chapters",
+      label: "Chapters",
+      icon: <BookOutlined style={{ fontSize: 28, color: "#1677ff" }} />,
+      href: `/courses/${id}/chapters`,
     },
     ...(isTeacher
       ? [
           {
-            key: "lesson-plans",
-            label: "Lesson Plans",
-            children: (
-              <div>
-                <Link href={`/courses/${id}/lesson-plans`}>
-                  <Button icon={<BookOutlined />}>View All Lesson Plans</Button>
-                </Link>
-              </div>
-            ),
-          },
-          {
             key: "progress",
             label: "Student Progress",
-            children: (
-              <div>
-                <Link href={`/courses/${id}/progress`}>
-                  <Button>View Progress</Button>
-                </Link>
-              </div>
-            ),
+            icon: <LineChartOutlined style={{ fontSize: 28, color: "#fa8c16" }} />,
+            href: `/courses/${id}/progress`,
           },
         ]
       : []),
@@ -92,7 +61,31 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
         )}
       </div>
 
-      <Tabs items={tabItems} />
+      <Card style={{ marginBottom: 24 }}>
+        <Title level={5}>Syllabus</Title>
+        {course.syllabus ? (
+          <MarkdownRenderer content={course.syllabus} />
+        ) : (
+          <Text type="secondary">No syllabus provided.</Text>
+        )}
+      </Card>
+
+      <Row gutter={[16, 16]}>
+        {navItems.map((item) => (
+          <Col key={item.key} xs={24} sm={12} md={8}>
+            <Link href={item.href}>
+              <Card
+                hoverable
+                style={{ textAlign: "center", cursor: "pointer" }}
+                styles={{ body: { padding: "32px 24px" } }}
+              >
+                {item.icon}
+                <Title level={5} style={{ margin: "12px 0 0" }}>{item.label}</Title>
+              </Card>
+            </Link>
+          </Col>
+        ))}
+      </Row>
     </div>
   );
 }

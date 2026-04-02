@@ -10,6 +10,7 @@ class DocumentOut(BaseModel):
     id: uuid.UUID
     uploaded_by: uuid.UUID | None
     course_id: uuid.UUID | None
+    chapter_id: uuid.UUID | None
     document_type: DocumentType
     original_filename: str
     original_file_type: str

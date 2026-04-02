@@ -1,14 +1,10 @@
 from .auth import RegisterRequest, TokenResponse
 from .users import UserOut, UserUpdate
 from .courses import CourseCreate, CourseUpdate, CourseOut, EnrollStudentRequest, AssignTeacherRequest
+from .chapters import ChapterCreate, ChapterUpdate, ChapterOut, ChapterAICommentOut
 from .assignments import (
     AssignmentCreate, AssignmentUpdate, AssignmentOut,
     SubmissionCreate, SubmissionGrade, SubmissionOut,
-)
-from .lesson_plans import (
-    LessonPlanCreate, LessonPlanUpdate, LessonPlanOut,
-    TopicCreate, TopicUpdate, TopicOut,
-    VersionOut, AIGenerateRequest,
 )
 from .documents import DocumentOut, DocumentUpdate, AICheckRequest
 from .progress import (
@@ -20,10 +16,9 @@ __all__ = [
     "RegisterRequest", "TokenResponse",
     "UserOut", "UserUpdate",
     "CourseCreate", "CourseUpdate", "CourseOut", "EnrollStudentRequest", "AssignTeacherRequest",
+    "ChapterCreate", "ChapterUpdate", "ChapterOut", "ChapterAICommentOut",
     "AssignmentCreate", "AssignmentUpdate", "AssignmentOut",
     "SubmissionCreate", "SubmissionGrade", "SubmissionOut",
-    "LessonPlanCreate", "LessonPlanUpdate", "LessonPlanOut",
-    "TopicCreate", "TopicUpdate", "TopicOut", "VersionOut", "AIGenerateRequest",
     "DocumentOut", "DocumentUpdate", "AICheckRequest",
     "TopicProgressOut", "TopicProgressUpdate",
     "AIRecommendationOut", "GenerateRecommendationRequest",

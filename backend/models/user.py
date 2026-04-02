@@ -11,7 +11,7 @@ from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from .course import CourseStudent, CourseTeacher
     from .assignment import AssignmentSubmission
-    from .lesson_plan import LessonPlan, LessonPlanVersion
+    from .chapter import ChapterAIComment
     from .document import Document
     from .progress import StudentTopicProgress, StudentAIRecommendation
 
@@ -65,6 +65,9 @@ class StudentUser(UUIDPrimaryKeyMixin, Base):
     ai_recommendations: Mapped[list["StudentAIRecommendation"]] = relationship(
         back_populates="student"
     )
+    chapter_ai_comments: Mapped[list["ChapterAIComment"]] = relationship(
+        back_populates="student"
+    )
 
 
 class TeacherUser(UUIDPrimaryKeyMixin, Base):
@@ -80,11 +83,5 @@ class TeacherUser(UUIDPrimaryKeyMixin, Base):
     user: Mapped["User"] = relationship(back_populates="teacher_profile")
     course_assignments: Mapped[list["CourseTeacher"]] = relationship(
         back_populates="teacher"
-    )
-    lesson_plans: Mapped[list["LessonPlan"]] = relationship(
-        back_populates="created_by_teacher"
-    )
-    lesson_plan_versions: Mapped[list["LessonPlanVersion"]] = relationship(
-        back_populates="saved_by_teacher"
     )
     documents: Mapped[list["Document"]] = relationship(back_populates="uploader")

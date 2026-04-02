@@ -11,6 +11,7 @@ class AssignmentCreate(BaseModel):
     topic: str | None = None
     due_date: datetime | None = None
     max_score: float | None = None
+    chapter_id: uuid.UUID | None = None
 
 
 class AssignmentUpdate(BaseModel):
@@ -20,6 +21,7 @@ class AssignmentUpdate(BaseModel):
     topic: str | None = None
     due_date: datetime | None = None
     max_score: float | None = None
+    chapter_id: uuid.UUID | None = None
 
 
 class AssignmentOut(BaseModel):
@@ -27,6 +29,7 @@ class AssignmentOut(BaseModel):
 
     id: uuid.UUID
     course_id: uuid.UUID
+    chapter_id: uuid.UUID | None
     name: str
     description: str | None
     assignment_type: AssignmentType

@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from anythingllm import ChatMode, get_client
@@ -54,11 +55,17 @@ def _get_submission_or_404(submission_id: uuid.UUID, assignment_id: uuid.UUID, d
 # ── Assignments ───────────────────────────────────────────────────────────────
 
 @router.get("", response_model=list[AssignmentOut])
-def list_assignments(course_id: uuid.UUID, _: CurrentUser, db: DbDep):
+def list_assignments(
+    course_id: uuid.UUID,
+    _: CurrentUser,
+    db: DbDep,
+    chapter_id: Optional[uuid.UUID] = Query(None),
+):
     _get_course_or_404(course_id, db)
-    return db.scalars(
-        select(Assignment).where(Assignment.course_id == course_id).order_by(Assignment.due_date)
-    ).all()
+    query = select(Assignment).where(Assignment.course_id == course_id)
+    if chapter_id is not None:
+        query = query.where(Assignment.chapter_id == chapter_id)
+    return db.scalars(query.order_by(Assignment.due_date)).all()
 
 
 @router.post("", response_model=AssignmentOut, status_code=status.HTTP_201_CREATED)

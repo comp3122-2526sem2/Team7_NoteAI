@@ -9,9 +9,9 @@ from models import Base
 from routers import (
     assignments_router,
     auth_router,
+    chapters_router,
     courses_router,
     documents_router,
-    lesson_plans_router,
     progress_router,
     users_router,
 )
@@ -37,8 +37,8 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(courses_router)
+app.include_router(chapters_router)
 app.include_router(assignments_router)
-app.include_router(lesson_plans_router)
 app.include_router(documents_router)
 app.include_router(progress_router)
 

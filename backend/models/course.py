@@ -8,7 +8,7 @@ from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from .user import StudentUser, TeacherUser
     from .assignment import Assignment, CourseAssignment
-    from .lesson_plan import LessonPlan
+    from .chapter import Chapter
     from .document import Document
     from .progress import StudentTopicProgress, StudentAIRecommendation
 
@@ -30,7 +30,9 @@ class Course(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="course", cascade="all, delete-orphan"
     )
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="course")
-    lesson_plans: Mapped[list["LessonPlan"]] = relationship(back_populates="course")
+    chapters: Mapped[list["Chapter"]] = relationship(
+        back_populates="course", cascade="all, delete-orphan", order_by="Chapter.order"
+    )
     documents: Mapped[list["Document"]] = relationship(back_populates="course")
     student_topic_progress: Mapped[list["StudentTopicProgress"]] = relationship(
         back_populates="course"
