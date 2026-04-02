@@ -21,6 +21,38 @@ from schemas import (
 router = APIRouter(prefix="/courses/{course_id}/assignments", tags=["Assignments"])
 
 
+def _strip_answers(content: dict | None) -> dict | None:
+    """
+    Remove correct_answer / suggested_answer from every question in an
+    assignment content dict before returning it to a student.
+    """
+    if not content or not isinstance(content, dict):
+        return content
+    import copy
+    content = copy.deepcopy(content)
+    for section in content.get("sections", []):
+        stype = section.get("type")
+        if stype == "mc":
+            section.pop("correct_answer", None)
+        elif stype == "long":
+            section.pop("suggested_answer", None)
+        elif stype == "passage":
+            for q in section.get("questions", []):
+                if q.get("type") == "mc":
+                    q.pop("correct_answer", None)
+                elif q.get("type") == "long":
+                    q.pop("suggested_answer", None)
+    return content
+
+
+def _assignment_out(assignment: Assignment, student: bool) -> dict:
+    """Serialise an Assignment, stripping answer keys when caller is a student."""
+    out = AssignmentOut.model_validate(assignment).model_dump()
+    if student:
+        out["content"] = _strip_answers(out.get("content"))
+    return out
+
+
 def _get_course_or_404(course_id: uuid.UUID, db) -> Course:
     course = db.get(Course, course_id)
     if not course:
@@ -57,7 +89,7 @@ def _get_submission_or_404(submission_id: uuid.UUID, assignment_id: uuid.UUID, d
 @router.get("", response_model=list[AssignmentOut])
 def list_assignments(
     course_id: uuid.UUID,
-    _: CurrentUser,
+    current_user: CurrentUser,
     db: DbDep,
     chapter_id: Optional[uuid.UUID] = Query(None),
 ):
@@ -65,7 +97,11 @@ def list_assignments(
     query = select(Assignment).where(Assignment.course_id == course_id)
     if chapter_id is not None:
         query = query.where(Assignment.chapter_id == chapter_id)
-    return db.scalars(query.order_by(Assignment.due_date)).all()
+    is_student = current_user.role == UserRole.student
+    return [
+        _assignment_out(a, is_student)
+        for a in db.scalars(query.order_by(Assignment.due_date)).all()
+    ]
 
 
 @router.post("", response_model=AssignmentOut, status_code=status.HTTP_201_CREATED)
@@ -83,8 +119,9 @@ def create_assignment(course_id: uuid.UUID, body: AssignmentCreate, _: TeacherUs
 
 
 @router.get("/{assignment_id}", response_model=AssignmentOut)
-def get_assignment(course_id: uuid.UUID, assignment_id: uuid.UUID, _: CurrentUser, db: DbDep):
-    return _get_assignment_or_404(assignment_id, course_id, db)
+def get_assignment(course_id: uuid.UUID, assignment_id: uuid.UUID, current_user: CurrentUser, db: DbDep):
+    assignment = _get_assignment_or_404(assignment_id, course_id, db)
+    return _assignment_out(assignment, current_user.role == UserRole.student)
 
 
 @router.put("/{assignment_id}", response_model=AssignmentOut)

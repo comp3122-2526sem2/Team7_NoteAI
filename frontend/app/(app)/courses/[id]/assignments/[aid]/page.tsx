@@ -48,33 +48,35 @@ function renderQuestions(
 
       for (const sq of passage.questions) {
         qNum++;
+        const n = qNum; // capture current value — prevents closure-in-loop bug
+        nodes.push(
+          <QuestionBlock
+            key={`q-${n}`}
+            num={n}
+            question={sq}
+            answer={answers[String(n)] ?? ""}
+            onChange={(v) => onChange(String(n), v)}
+            readOnly={readOnly}
+            showSuggestedAnswer={showSuggestedAnswer}
+          />
+        );
+      }
+    } else {
+      qNum++;
+      const n = qNum; // capture current value
       nodes.push(
         <QuestionBlock
-          key={`q-${qNum}`}
-          num={qNum}
-          question={sq}
-          answer={answers[String(qNum)] ?? ""}
-          onChange={(v) => onChange(String(qNum), v)}
+          key={`q-${n}`}
+          num={n}
+          question={section as MCQuestion | LongQuestion}
+          answer={answers[String(n)] ?? ""}
+          onChange={(v) => onChange(String(n), v)}
           readOnly={readOnly}
           showSuggestedAnswer={showSuggestedAnswer}
         />
       );
     }
-  } else {
-    qNum++;
-    nodes.push(
-      <QuestionBlock
-        key={`q-${qNum}`}
-        num={qNum}
-        question={section as MCQuestion | LongQuestion}
-        answer={answers[String(qNum)] ?? ""}
-        onChange={(v) => onChange(String(qNum), v)}
-        readOnly={readOnly}
-        showSuggestedAnswer={showSuggestedAnswer}
-      />
-    );
   }
-}
 
   return nodes;
 }
@@ -259,7 +261,7 @@ export default function AssignmentDetailPage({
   const mySubmission = submissions?.find((s) => s.student_id === user?.id);
 
   return (
-    <div style={{ maxWidth: 860 }}>
+    <div>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
