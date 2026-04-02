@@ -58,10 +58,24 @@ export default function RegisterPage() {
           <Form.Item name="nickname" label="Nickname" rules={[{ required: true }]}>
             <Input size="large" />
           </Form.Item>
-          <Form.Item name="username" label="Username" rules={[{ required: true }]}>
+          <Form.Item
+            name="username"
+            label="Username"
+            rules={[
+              { required: true },
+              { min: 3, message: "Username must be at least 3 characters" },
+            ]}
+          >
             <Input size="large" />
           </Form.Item>
-          <Form.Item name="password" label="Password" rules={[{ required: true }]}>
+          <Form.Item
+            name="password"
+            label="Password"
+            rules={[
+              { required: true },
+              { min: 8, message: "Password must be at least 8 characters" },
+            ]}
+          >
             <Input.Password size="large" />
           </Form.Item>
           <Form.Item name="role" label="Role" initialValue="student" rules={[{ required: true }]}>

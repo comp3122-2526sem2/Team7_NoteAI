@@ -1,11 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from models.user import UserRole
 
 
 class RegisterRequest(BaseModel):
-    username: str
-    password: str
-    nickname: str
+    username: str = Field(min_length=3, max_length=100)
+    password: str = Field(min_length=8, max_length=100)
+    nickname: str = Field(min_length=1, max_length=100)
     role: UserRole
     # Required when role == student
     student_id: str | None = None

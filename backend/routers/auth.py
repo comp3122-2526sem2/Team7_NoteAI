@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -12,6 +13,8 @@ from deps import CurrentUser, DbDep
 from models import StudentUser, TeacherUser, User, UserRole
 from schemas import RegisterRequest, TokenResponse, UserOut
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
@@ -19,20 +22,39 @@ async def _provision_anythingllm_user(user_id: str, username: str, password: str
     """
     Background task: create a matching user in AnythingLLM and store their
     AnythingLLM user ID so we can associate threads with them.
-    Fails silently if AnythingLLM is unavailable or not in multi-user mode.
     """
+    logger.debug("[AnythingLLM] Provisioning user '%s' (id=%s)…", username, user_id)
     db = SessionLocal()
     try:
         client = get_client()
         llm_user = await client.admin.create_user(username=username, password=password)
-        if llm_user:
-            from uuid import UUID
-            user = db.get(User, UUID(user_id))
-            if user:
-                user.anythingllm_user_id = llm_user.id
-                db.commit()
-    except Exception:
-        pass
+        if llm_user is None:
+            logger.warning(
+                "[AnythingLLM] create_user returned None for '%s' — "
+                "AnythingLLM may not be in multi-user mode (got 401).",
+                username,
+            )
+            return
+
+        logger.debug(
+            "[AnythingLLM] Created user '%s' → anythingllm_user_id=%s",
+            username, llm_user.id,
+        )
+
+        from uuid import UUID
+        user = db.get(User, UUID(user_id))
+        if user:
+            user.anythingllm_user_id = llm_user.id
+            db.commit()
+            logger.info(
+                "[AnythingLLM] Stored anythingllm_user_id=%s for user '%s'",
+                llm_user.id, username,
+            )
+        else:
+            logger.error("[AnythingLLM] User id=%s not found in DB after register.", user_id)
+
+    except Exception as exc:
+        logger.exception("[AnythingLLM] Failed to provision user '%s': %s", username, exc)
     finally:
         db.close()
 
