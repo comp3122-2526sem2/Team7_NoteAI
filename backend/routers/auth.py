@@ -1,11 +1,13 @@
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 
+from anythingllm import get_client
 from auth_utils import create_access_token, hash_password, verify_password
+from database import SessionLocal
 from deps import CurrentUser, DbDep
 from models import StudentUser, TeacherUser, User, UserRole
 from schemas import RegisterRequest, TokenResponse, UserOut
@@ -13,8 +15,30 @@ from schemas import RegisterRequest, TokenResponse, UserOut
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
+async def _provision_anythingllm_user(user_id: str, username: str, password: str) -> None:
+    """
+    Background task: create a matching user in AnythingLLM and store their
+    AnythingLLM user ID so we can associate threads with them.
+    Fails silently if AnythingLLM is unavailable or not in multi-user mode.
+    """
+    db = SessionLocal()
+    try:
+        client = get_client()
+        llm_user = await client.admin.create_user(username=username, password=password)
+        if llm_user:
+            from uuid import UUID
+            user = db.get(User, UUID(user_id))
+            if user:
+                user.anythingllm_user_id = llm_user.id
+                db.commit()
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def register(body: RegisterRequest, db: DbDep):
+def register(body: RegisterRequest, background_tasks: BackgroundTasks, db: DbDep):
     if db.scalar(select(User).where(User.username == body.username)):
         raise HTTPException(status_code=400, detail="Username already taken.")
 
@@ -39,6 +63,14 @@ def register(body: RegisterRequest, db: DbDep):
 
     db.commit()
     db.refresh(user)
+
+    background_tasks.add_task(
+        _provision_anythingllm_user,
+        str(user.id),
+        body.username,
+        body.password,
+    )
+
     return user
 
 

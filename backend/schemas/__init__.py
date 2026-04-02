@@ -2,6 +2,7 @@ from .auth import RegisterRequest, TokenResponse
 from .users import UserOut, UserUpdate
 from .courses import CourseCreate, CourseUpdate, CourseOut, EnrollStudentRequest, AssignTeacherRequest
 from .chapters import ChapterCreate, ChapterUpdate, ChapterOut, ChapterAICommentOut
+from .threads import ThreadCreate, ThreadOut
 from .assignments import (
     AssignmentCreate, AssignmentUpdate, AssignmentOut,
     SubmissionCreate, SubmissionGrade, SubmissionOut,
@@ -17,6 +18,7 @@ __all__ = [
     "UserOut", "UserUpdate",
     "CourseCreate", "CourseUpdate", "CourseOut", "EnrollStudentRequest", "AssignTeacherRequest",
     "ChapterCreate", "ChapterUpdate", "ChapterOut", "ChapterAICommentOut",
+    "ThreadCreate", "ThreadOut",
     "AssignmentCreate", "AssignmentUpdate", "AssignmentOut",
     "SubmissionCreate", "SubmissionGrade", "SubmissionOut",
     "DocumentOut", "DocumentUpdate", "AICheckRequest",

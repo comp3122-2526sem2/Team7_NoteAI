@@ -1,18 +1,22 @@
+import json
 import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, status
+from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from anythingllm import ChatMode, get_client
 from anythingllm.exceptions import AnythingLLMError
+from database import SessionLocal
 from deps import CurrentUser, DbDep, TeacherUser
 from models import Course, Document, StudentUser, UserRole
 from models.chapter import Chapter, ChapterAIComment
+from models.chapter_thread import ChapterThread
 from models.document import ConversionStatus, DocumentType
-from schemas import ChapterCreate, ChapterOut, ChapterUpdate, ChapterAICommentOut
+from schemas import ChapterCreate, ChapterOut, ChapterUpdate, ChapterAICommentOut, ThreadCreate, ThreadOut
 from schemas.documents import DocumentOut
 
 router = APIRouter(prefix="/courses/{course_id}/chapters", tags=["Chapters"])
@@ -151,6 +155,55 @@ def list_chapter_documents(
     ).all()
 
 
+async def _process_document_upload(
+    doc_id: uuid.UUID,
+    chapter_id: uuid.UUID,
+    file_bytes: bytes,
+    original_filename: str,
+) -> None:
+    """
+    Background task: upload the file to AnythingLLM, embed it into the
+    chapter's workspace, and update the document's conversion_status.
+    Opens its own DB session since the request session is already closed.
+    """
+    db = SessionLocal()
+    try:
+        doc = db.get(Document, doc_id)
+        if not doc:
+            return
+
+        chapter = db.get(Chapter, chapter_id)
+        if not chapter:
+            doc.conversion_status = ConversionStatus.failed
+            db.commit()
+            return
+
+        client = get_client()
+        result = await client.document.upload_file(file_bytes, original_filename)
+
+        if result.success and result.documents:
+            location = result.documents[0].location
+            doc.anythingllm_location = location
+
+            workspace_slug = await _ensure_workspace(chapter, db)
+            await client.workspace.add_documents(workspace_slug, [location])
+            doc.conversion_status = ConversionStatus.completed
+        else:
+            doc.conversion_status = ConversionStatus.failed
+
+        db.commit()
+    except Exception:
+        try:
+            doc = db.get(Document, doc_id)
+            if doc:
+                doc.conversion_status = ConversionStatus.failed
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 @router.post(
     "/{chapter_id}/documents/upload",
     response_model=DocumentOut,
@@ -162,12 +215,13 @@ async def upload_chapter_document(
     file: UploadFile,
     current_user: TeacherUser,
     db: DbDep,
+    background_tasks: BackgroundTasks,
     document_type: DocumentType = DocumentType.other,
 ):
     """
-    Upload a document for a chapter.
-    The file is saved locally, pushed to AnythingLLM, and embedded into the
-    chapter's dedicated workspace so AI comments can reference it.
+    Save the file and return immediately with status=pending.
+    AnythingLLM upload and workspace embedding run in the background.
+    Poll GET /{chapter_id}/documents to watch conversion_status → completed / failed.
     """
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
@@ -176,7 +230,8 @@ async def upload_chapter_document(
                    f"Allowed: {', '.join(ALLOWED_TYPES.keys())}",
         )
 
-    chapter = _get_chapter_or_404(chapter_id, course_id, db)
+    _get_chapter_or_404(chapter_id, course_id, db)
+
     ext = ALLOWED_TYPES[file.content_type]
     saved_name = f"{uuid.uuid4()}.{ext}"
     save_path = UPLOAD_DIR / saved_name
@@ -194,26 +249,17 @@ async def upload_chapter_document(
         conversion_status=ConversionStatus.pending,
     )
     db.add(doc)
-    db.flush()
-
-    client = get_client()
-    try:
-        result = await client.document.upload_file(file_bytes, file.filename)
-        if result.success and result.documents:
-            location = result.documents[0].location
-            doc.anythingllm_location = location
-            doc.conversion_status = ConversionStatus.completed
-
-            # Embed into the chapter's own workspace
-            workspace_slug = await _ensure_workspace(chapter, db)
-            await client.workspace.add_documents(workspace_slug, [location])
-        else:
-            doc.conversion_status = ConversionStatus.failed
-    except Exception:
-        doc.conversion_status = ConversionStatus.failed
-
     db.commit()
     db.refresh(doc)
+
+    background_tasks.add_task(
+        _process_document_upload,
+        doc.id,
+        chapter_id,
+        file_bytes,
+        file.filename,
+    )
+
     return doc
 
 
@@ -378,5 +424,156 @@ async def stream_ai_comment(
                 comment=accumulated,
             ))
         db.commit()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── Chapter Threads (Chatroom) ────────────────────────────────────────────────
+
+class ChatMessageRequest(BaseModel):
+    message: str
+
+
+@router.get("/{chapter_id}/threads", response_model=list[ThreadOut])
+def list_threads(
+    course_id: uuid.UUID,
+    chapter_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DbDep,
+):
+    """List all chat threads the current user has in this chapter workspace."""
+    _get_chapter_or_404(chapter_id, course_id, db)
+    return db.scalars(
+        select(ChapterThread).where(
+            ChapterThread.chapter_id == chapter_id,
+            ChapterThread.user_id == current_user.id,
+        ).order_by(ChapterThread.created_at)
+    ).all()
+
+
+@router.post("/{chapter_id}/threads", response_model=ThreadOut, status_code=status.HTTP_201_CREATED)
+async def create_thread(
+    course_id: uuid.UUID,
+    chapter_id: uuid.UUID,
+    body: ThreadCreate,
+    current_user: CurrentUser,
+    db: DbDep,
+):
+    """Create a new named thread in the chapter's AnythingLLM workspace."""
+    chapter = _get_chapter_or_404(chapter_id, course_id, db)
+    workspace_slug = await _ensure_workspace(chapter, db)
+
+    client = get_client()
+    thread_info = await client.workspace.create_thread(
+        workspace_slug,
+        body.name,
+        user_id=current_user.anythingllm_user_id if hasattr(current_user, "anythingllm_user_id") else None,
+    )
+
+    record = ChapterThread(
+        chapter_id=chapter_id,
+        user_id=current_user.id,
+        thread_slug=thread_info.slug,
+        name=body.name,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+@router.delete("/{chapter_id}/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_thread(
+    course_id: uuid.UUID,
+    chapter_id: uuid.UUID,
+    thread_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DbDep,
+):
+    """Delete a thread from the chapter workspace and our DB."""
+    chapter = _get_chapter_or_404(chapter_id, course_id, db)
+    thread = db.scalar(
+        select(ChapterThread).where(
+            ChapterThread.id == thread_id,
+            ChapterThread.user_id == current_user.id,
+        )
+    )
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found.")
+
+    if chapter.workspace_slug:
+        client = get_client()
+        try:
+            await client.workspace.delete_thread(chapter.workspace_slug, thread.thread_slug)
+        except Exception:
+            pass
+
+    db.delete(thread)
+    db.commit()
+
+
+@router.get("/{chapter_id}/threads/{thread_id}/history")
+async def get_thread_history(
+    course_id: uuid.UUID,
+    chapter_id: uuid.UUID,
+    thread_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DbDep,
+):
+    """Return chat history for a specific thread."""
+    chapter = _get_chapter_or_404(chapter_id, course_id, db)
+    thread = db.scalar(
+        select(ChapterThread).where(
+            ChapterThread.id == thread_id,
+            ChapterThread.user_id == current_user.id,
+        )
+    )
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found.")
+
+    workspace_slug = await _ensure_workspace(chapter, db)
+    client = get_client()
+    history = await client.workspace.get_thread_history(workspace_slug, thread.thread_slug)
+    return {"history": [{"role": h.role, "content": h.content, "sentAt": h.sentAt} for h in history.history]}
+
+
+@router.post("/{chapter_id}/threads/{thread_id}/stream")
+async def stream_thread_chat(
+    course_id: uuid.UUID,
+    chapter_id: uuid.UUID,
+    thread_id: uuid.UUID,
+    body: ChatMessageRequest,
+    current_user: CurrentUser,
+    db: DbDep,
+):
+    """SSE stream – send a message to a specific thread and stream the reply."""
+    if not body.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    chapter = _get_chapter_or_404(chapter_id, course_id, db)
+    thread = db.scalar(
+        select(ChapterThread).where(
+            ChapterThread.id == thread_id,
+            ChapterThread.user_id == current_user.id,
+        )
+    )
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found.")
+
+    workspace_slug = await _ensure_workspace(chapter, db)
+    thread_slug = thread.thread_slug
+    message = body.message
+
+    async def event_stream():
+        client = get_client()
+        async for chunk in client.workspace.stream_thread_chat(
+            workspace_slug, thread_slug, message, mode=ChatMode.chat
+        ):
+            token = chunk.textResponse or ""
+            if token:
+                yield f"data: {json.dumps(token)}\n\n"
+            if chunk.close:
+                break
+        yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

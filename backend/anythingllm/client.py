@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import httpx
 
+from .admin import AdminAPI
 from .document import DocumentAPI
 from .workspace import WorkspaceAPI
 
@@ -24,19 +25,18 @@ class AnythingLLMClient:
     Async client for the AnythingLLM API.
 
     Sub-clients:
-        .workspace  – chat, stream_chat, vector_search, workspace CRUD
+        .admin      – user provisioning (multi-user mode only)
+        .workspace  – chat, threads, vector_search, workspace CRUD
         .document   – upload_file, upload_raw_text, upload_link, list, delete
     """
 
     def __init__(self, base_url: str, api_key: str, timeout: float = 60.0) -> None:
         self._http = httpx.AsyncClient(
             base_url=base_url,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            headers={"Authorization": f"Bearer {api_key}"},
             timeout=timeout,
         )
+        self.admin = AdminAPI(self._http)
         self.workspace = WorkspaceAPI(self._http)
         self.document = DocumentAPI(self._http)
 

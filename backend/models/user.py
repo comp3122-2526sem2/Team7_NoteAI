@@ -2,7 +2,7 @@ import uuid
 import enum
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from .course import CourseStudent, CourseTeacher
     from .assignment import AssignmentSubmission
     from .chapter import ChapterAIComment
+    from .chapter_thread import ChapterThread
     from .document import Document
     from .progress import StudentTopicProgress, StudentAIRecommendation
 
@@ -29,6 +30,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), nullable=False)
+    anythingllm_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -39,6 +41,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     teacher_profile: Mapped[Optional["TeacherUser"]] = relationship(
         back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
+    chapter_threads: Mapped[list["ChapterThread"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
     )
 
 

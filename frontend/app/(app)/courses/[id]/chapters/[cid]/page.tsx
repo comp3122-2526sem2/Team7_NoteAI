@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useRef, useCallback } from "react";
+import { use, useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -9,7 +9,7 @@ import {
 } from "antd";
 import {
   PlusOutlined, ThunderboltOutlined, ReloadOutlined, EyeOutlined, DeleteOutlined,
-  FileOutlined, UploadOutlined,
+  FileOutlined, UploadOutlined, SendOutlined, RobotOutlined, UserOutlined,
 } from "@ant-design/icons";
 import type { UploadFile } from "antd";
 import dayjs from "dayjs";
@@ -20,7 +20,7 @@ import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import { MarkdownInput } from "@/components/shared/markdown-input";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import type { Assignment, AssignmentCreateData, Document } from "@/lib/api";
+import type { Assignment, AssignmentCreateData, ChatMessage, ChapterThread, Document } from "@/lib/api";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -68,6 +68,9 @@ export default function ChapterDetailPage({
     queryKey: ["chapter-documents", courseId, chapterId],
     queryFn: () => chaptersApi.listDocuments(courseId, chapterId).then((r) => r.data),
     enabled: isTeacher,
+    // Keep polling while any document is still pending
+    refetchInterval: (query) =>
+      query.state.data?.some((d) => d.conversion_status === "pending") ? 3000 : false,
   });
 
   const generateMutation = useMutation({
@@ -146,14 +149,14 @@ export default function ChapterDetailPage({
     formData.append("file", file as unknown as Blob);
     try {
       await chaptersApi.uploadDocument(courseId, chapterId, formData);
-      message.success(`${file.name} uploaded and embedded`);
+      message.success(`${file.name} saved — embedding in background…`);
       refetchDocs();
     } catch {
       message.error(`Failed to upload ${file.name}`);
     } finally {
       setUploadingFile(false);
     }
-    return false; // prevent default antd upload behaviour
+    return false;
   };
 
   const deleteMutation = useMutation({
@@ -410,6 +413,20 @@ export default function ChapterDetailPage({
         </Card>
       )}
 
+      {/* Chatroom */}
+      <Card
+        title={
+          <Space>
+            <RobotOutlined style={{ color: "#1677ff" }} />
+            <span>Chapter Chat</span>
+          </Space>
+        }
+        style={{ marginTop: 24 }}
+        styles={{ body: { padding: 0 } }}
+      >
+        <ChapterChat courseId={courseId} chapterId={chapterId} token={token ?? ""} />
+      </Card>
+
       {/* Create Assignment Modal */}
       <Modal
         title="Add Assignment"
@@ -448,6 +465,305 @@ export default function ChapterDetailPage({
           </Form.Item>
         </Form>
       </Modal>
+    </div>
+  );
+}
+
+// ── Chapter Chat component ────────────────────────────────────────────────────
+
+function ChapterChat({
+  courseId,
+  chapterId,
+  token,
+}: {
+  courseId: string;
+  chapterId: string;
+  token: string;
+}) {
+  const { message: antMessage } = App.useApp();
+  const qc = useQueryClient();
+
+  const [activeThread, setActiveThread] = useState<ChapterThread | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [responding, setResponding] = useState(false);
+  const [newThreadName, setNewThreadName] = useState("");
+  const [creatingThread, setCreatingThread] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const streamingRef = useRef("");
+
+  // Thread list
+  const { data: threads, isLoading: threadsLoading } = useQuery({
+    queryKey: ["chapter-threads", courseId, chapterId],
+    queryFn: () => chaptersApi.listThreads(courseId, chapterId).then((r) => r.data),
+  });
+
+  // When thread list loads, auto-select first thread
+  useEffect(() => {
+    if (threads?.length && !activeThread) {
+      setActiveThread(threads[0]);
+    }
+  }, [threads, activeThread]);
+
+  // Load history whenever active thread changes
+  const { isLoading: historyLoading } = useQuery({
+    queryKey: ["thread-history", courseId, chapterId, activeThread?.id],
+    queryFn: () =>
+      chaptersApi.getThreadHistory(courseId, chapterId, activeThread!.id).then((r) => r.data),
+    enabled: !!activeThread,
+    onSuccess: (data: { history: ChatMessage[] }) => setMessages(data.history ?? []),
+  } as Parameters<typeof useQuery>[0]);
+
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleCreateThread = useCallback(async () => {
+    const name = newThreadName.trim() || `Thread ${(threads?.length ?? 0) + 1}`;
+    setCreatingThread(true);
+    try {
+      const res = await chaptersApi.createThread(courseId, chapterId, name);
+      qc.invalidateQueries({ queryKey: ["chapter-threads", courseId, chapterId] });
+      setActiveThread(res.data);
+      setMessages([]);
+      setNewThreadName("");
+    } catch {
+      antMessage.error("Failed to create thread");
+    } finally {
+      setCreatingThread(false);
+    }
+  }, [newThreadName, threads?.length, courseId, chapterId, qc, antMessage]);
+
+  const handleDeleteThread = useCallback(async (thread: ChapterThread) => {
+    try {
+      await chaptersApi.deleteThread(courseId, chapterId, thread.id);
+      qc.invalidateQueries({ queryKey: ["chapter-threads", courseId, chapterId] });
+      if (activeThread?.id === thread.id) {
+        setActiveThread(null);
+        setMessages([]);
+      }
+    } catch {
+      antMessage.error("Failed to delete thread");
+    }
+  }, [activeThread, courseId, chapterId, qc, antMessage]);
+
+  const sendMessage = useCallback(async () => {
+    const text = input.trim();
+    if (!text || responding || !activeThread) return;
+    setInput("");
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    setResponding(true);
+    streamingRef.current = "";
+    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
+    const url = chaptersApi.threadStreamUrl(courseId, chapterId, activeThread.id);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ message: text }),
+      });
+      if (!res.body) throw new Error("No stream");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const line of decoder.decode(value).split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6);
+          if (raw === "[DONE]") break;
+          try {
+            const tok = JSON.parse(raw) as string;
+            streamingRef.current += tok;
+            setMessages((prev) => {
+              const next = [...prev];
+              next[next.length - 1] = { role: "assistant", content: streamingRef.current };
+              return next;
+            });
+          } catch { /* ignore */ }
+        }
+      }
+    } catch {
+      antMessage.error("Chat failed");
+      setMessages((prev) => prev.slice(0, -1));
+    } finally {
+      setResponding(false);
+    }
+  }, [input, responding, activeThread, courseId, chapterId, token, antMessage]);
+
+  return (
+    <div style={{ display: "flex", height: 520 }}>
+      {/* ── Thread sidebar ── */}
+      <div style={{
+        width: 200, borderRight: "1px solid #f0f0f0", display: "flex",
+        flexDirection: "column", flexShrink: 0,
+      }}>
+        <div style={{ padding: "10px 12px", borderBottom: "1px solid #f0f0f0" }}>
+          <Text strong style={{ fontSize: 12, color: "#888" }}>THREADS</Text>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {threadsLoading ? (
+            <div style={{ padding: 12 }}><LoadingSpinner /></div>
+          ) : !threads?.length ? (
+            <div style={{ padding: "12px", textAlign: "center" }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>No threads yet</Text>
+            </div>
+          ) : (
+            threads.map((t) => (
+              <div
+                key={t.id}
+                onClick={() => { setActiveThread(t); setMessages([]); }}
+                style={{
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                  background: activeThread?.id === t.id ? "#e6f4ff" : "transparent",
+                  borderLeft: activeThread?.id === t.id ? "3px solid #1677ff" : "3px solid transparent",
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}
+              >
+                <Text
+                  ellipsis
+                  style={{
+                    fontSize: 13,
+                    fontWeight: activeThread?.id === t.id ? 600 : 400,
+                    flex: 1, minWidth: 0,
+                  }}
+                >
+                  {t.name}
+                </Text>
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  style={{ flexShrink: 0, opacity: 0.5 }}
+                  onClick={(e) => { e.stopPropagation(); handleDeleteThread(t); }}
+                />
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* New thread input */}
+        <div style={{ padding: "10px 12px", borderTop: "1px solid #f0f0f0" }}>
+          <Input
+            size="small"
+            placeholder="Thread name…"
+            value={newThreadName}
+            onChange={(e) => setNewThreadName(e.target.value)}
+            onPressEnter={handleCreateThread}
+            style={{ marginBottom: 6 }}
+          />
+          <Button
+            type="primary"
+            size="small"
+            block
+            icon={<PlusOutlined />}
+            loading={creatingThread}
+            onClick={handleCreateThread}
+          >
+            New Thread
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Chat area ── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {!activeThread ? (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="Select a thread or create a new one to start chatting"
+            />
+          </div>
+        ) : (
+          <>
+            {/* Thread header */}
+            <div style={{
+              padding: "8px 16px", borderBottom: "1px solid #f0f0f0",
+              background: "#fafafa", display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <RobotOutlined style={{ color: "#1677ff" }} />
+              <Text strong style={{ fontSize: 13 }}>{activeThread.name}</Text>
+            </div>
+
+            {/* Messages */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+              {historyLoading ? (
+                <LoadingSpinner />
+              ) : messages.length === 0 ? (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="No messages yet. Ask anything about this chapter!"
+                />
+              ) : (
+                messages.map((msg, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      flexDirection: msg.role === "user" ? "row-reverse" : "row",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      marginBottom: 16,
+                    }}
+                  >
+                    <div style={{
+                      width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: msg.role === "user" ? "#1677ff" : "#f0f0f0",
+                      color: msg.role === "user" ? "#fff" : "#555",
+                      fontSize: 13,
+                    }}>
+                      {msg.role === "user" ? <UserOutlined /> : <RobotOutlined />}
+                    </div>
+                    <div style={{
+                      maxWidth: "72%",
+                      background: msg.role === "user" ? "#1677ff" : "#fafafa",
+                      color: msg.role === "user" ? "#fff" : "inherit",
+                      borderRadius: msg.role === "user" ? "16px 4px 16px 16px" : "4px 16px 16px 16px",
+                      padding: "10px 14px",
+                      border: msg.role === "assistant" ? "1px solid #f0f0f0" : "none",
+                    }}>
+                      {msg.role === "assistant"
+                        ? <MarkdownRenderer content={msg.content || "…"} />
+                        : <span style={{ whiteSpace: "pre-wrap" }}>{msg.content}</span>}
+                    </div>
+                  </div>
+                ))
+              )}
+              <div ref={bottomRef} />
+            </div>
+
+            {/* Input bar */}
+            <div style={{
+              borderTop: "1px solid #f0f0f0", padding: "12px 16px",
+              display: "flex", gap: 8,
+            }}>
+              <Input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onPressEnter={(e) => { if (!e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                placeholder="Ask about this chapter… (Enter to send)"
+                disabled={responding}
+                style={{ flex: 1 }}
+              />
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                onClick={sendMessage}
+                loading={responding}
+                disabled={!input.trim()}
+              >
+                Send
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

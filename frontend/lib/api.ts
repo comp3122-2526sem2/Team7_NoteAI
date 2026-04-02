@@ -143,6 +143,16 @@ export const chaptersApi = {
     ),
   deleteDocument: (courseId: string, chapterId: string, docId: string) =>
     api.delete(`/courses/${courseId}/chapters/${chapterId}/documents/${docId}`),
+  listThreads: (courseId: string, chapterId: string) =>
+    api.get<ChapterThread[]>(`/courses/${courseId}/chapters/${chapterId}/threads`),
+  createThread: (courseId: string, chapterId: string, name: string) =>
+    api.post<ChapterThread>(`/courses/${courseId}/chapters/${chapterId}/threads`, { name }),
+  deleteThread: (courseId: string, chapterId: string, threadId: string) =>
+    api.delete(`/courses/${courseId}/chapters/${chapterId}/threads/${threadId}`),
+  getThreadHistory: (courseId: string, chapterId: string, threadId: string) =>
+    api.get<{ history: ChatMessage[] }>(`/courses/${courseId}/chapters/${chapterId}/threads/${threadId}/history`),
+  threadStreamUrl: (courseId: string, chapterId: string, threadId: string) =>
+    `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/courses/${courseId}/chapters/${chapterId}/threads/${threadId}/stream`,
 };
 
 // ── Documents ─────────────────────────────────────────────────────────────────
@@ -292,6 +302,22 @@ export interface StudentProgress {
   mastery_level: "weak" | "developing" | "proficient";
   last_assessed_at?: string;
   updated_at: string;
+}
+
+export interface ChapterThread {
+  id: string;
+  chapter_id: string;
+  user_id: string;
+  thread_slug: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  sentAt?: number;
 }
 
 export interface Recommendation {

@@ -30,6 +30,7 @@ from functools import lru_cache
 from .client import AnythingLLMClient
 from .exceptions import AnythingLLMAuthError, AnythingLLMError, AnythingLLMNotFoundError, AnythingLLMRequestError
 from .schemas import (
+    AnythingLLMUser,
     ChatHistoryItem,
     ChatHistoryResponse,
     ChatMode,
@@ -37,6 +38,7 @@ from .schemas import (
     ChatSource,
     DocumentRawTextResponse,
     DocumentUploadResponse,
+    ThreadInfo,
     UploadedDocument,
     VectorSearchResponse,
     VectorSearchResult,
@@ -54,6 +56,8 @@ __all__ = [
     "AnythingLLMNotFoundError",
     "AnythingLLMRequestError",
     # schemas
+    "AnythingLLMUser",
+    "ThreadInfo",
     "ChatMode",
     "ChatResponse",
     "ChatSource",

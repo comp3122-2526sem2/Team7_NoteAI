@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from .course import Course
     from .assignment import Assignment
     from .document import Document
+    from .chapter_thread import ChapterThread
 
 
 class Chapter(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -34,6 +35,9 @@ class Chapter(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="chapter", cascade="all, delete-orphan"
     )
     documents: Mapped[list["Document"]] = relationship(
+        back_populates="chapter", cascade="all, delete-orphan"
+    )
+    threads: Mapped[list["ChapterThread"]] = relationship(
         back_populates="chapter", cascade="all, delete-orphan"
     )
 

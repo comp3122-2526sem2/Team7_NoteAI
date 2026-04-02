@@ -106,3 +106,21 @@ class DocumentRawTextResponse(_Base):
     success: bool
     error: str | None = None
     documents: list[UploadedDocument] = []
+
+
+# ── Admin ──────────────────────────────────────────────────────────────────────
+
+class AnythingLLMUser(_Base):
+    id: int
+    username: str
+    role: str = "default"
+
+
+# ── Threads ────────────────────────────────────────────────────────────────────
+
+class ThreadInfo(_Base):
+    id: int | None = None
+    slug: str
+    name: str
+    user_id: int | None = None
+    workspace_id: int | None = None

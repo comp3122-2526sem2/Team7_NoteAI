@@ -20,6 +20,7 @@ from .schemas import (
     ChatMode,
     ChatResponse,
     ChatSource,
+    ThreadInfo,
     VectorSearchResponse,
     WorkspaceInfo,
 )
@@ -117,13 +118,14 @@ class WorkspaceAPI:
                     data = json.loads(raw)
                 except json.JSONDecodeError:
                     continue
+                err = data.get("error")
                 chunk = ChatResponse(
                     id=data.get("id"),
                     type=data.get("type"),
                     textResponse=data.get("textResponse") or "",
                     sources=[ChatSource(**s) for s in data.get("sources", [])],
                     close=data.get("close", False),
-                    error=data.get("error"),
+                    error=str(err) if err and err is not True else None,
                 )
                 yield chunk
                 if chunk.close:
@@ -255,6 +257,77 @@ class WorkspaceAPI:
         payload = {"adds": [], "deletes": doc_paths}
         resp = await self._http.post(f"/v1/workspace/{slug}/update-embeddings", json=payload)
         _raise_for_status(resp)
+
+    # ── Threads ───────────────────────────────────────────────────────────────
+
+    async def create_thread(
+        self,
+        slug: str,
+        name: str,
+        *,
+        user_id: int | None = None,
+        thread_slug: str | None = None,
+    ) -> ThreadInfo:
+        """Create a new thread inside a workspace."""
+        payload: dict[str, Any] = {"name": name}
+        if user_id is not None:
+            payload["userId"] = user_id
+        if thread_slug:
+            payload["slug"] = thread_slug
+        resp = await self._http.post(f"/v1/workspace/{slug}/thread/new", json=payload)
+        _raise_for_status(resp)
+        return ThreadInfo.model_validate(resp.json()["thread"])
+
+    async def delete_thread(self, slug: str, thread_slug: str) -> None:
+        """Delete a thread from a workspace."""
+        resp = await self._http.delete(f"/v1/workspace/{slug}/thread/{thread_slug}")
+        _raise_for_status(resp)
+
+    async def get_thread_history(self, slug: str, thread_slug: str) -> ChatHistoryResponse:
+        """Fetch the chat history for a specific thread."""
+        resp = await self._http.get(f"/v1/workspace/{slug}/thread/{thread_slug}/chats")
+        _raise_for_status(resp)
+        return ChatHistoryResponse.model_validate(resp.json())
+
+    async def stream_thread_chat(
+        self,
+        slug: str,
+        thread_slug: str,
+        message: str,
+        *,
+        mode: ChatMode = ChatMode.chat,
+    ) -> AsyncIterator[ChatResponse]:
+        """Stream chat within a specific workspace thread."""
+        payload: dict[str, Any] = {"message": message, "mode": mode.value}
+        async with self._http.stream(
+            "POST",
+            f"/v1/workspace/{slug}/thread/{thread_slug}/stream-chat",
+            json=payload,
+        ) as response:
+            _raise_for_status(response)
+            async for line in response.aiter_lines():
+                line = line.strip()
+                if not line or not line.startswith("data:"):
+                    continue
+                raw = line[len("data:"):].strip()
+                if raw == "[DONE]":
+                    break
+                try:
+                    data = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                err = data.get("error")
+                chunk = ChatResponse(
+                    id=data.get("id"),
+                    type=data.get("type"),
+                    textResponse=data.get("textResponse") or "",
+                    sources=[ChatSource(**s) for s in data.get("sources", [])],
+                    close=data.get("close", False),
+                    error=str(err) if err and err is not True else None,
+                )
+                yield chunk
+                if chunk.close:
+                    break
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
