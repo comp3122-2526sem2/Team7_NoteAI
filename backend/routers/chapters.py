@@ -411,19 +411,91 @@ async def delete_chapter_document(
 
 # ── Prompt helper ─────────────────────────────────────────────────────────────
 
+def _build_assignment_performance_block(
+    chapter: Chapter,
+    student_id: uuid.UUID,
+    db,
+) -> str:
+    """
+    Return a human-readable summary of the student's submissions for every
+    assignment in this chapter, including score and AI feedback (truncated).
+    """
+    assignments = db.scalars(
+        select(Assignment).where(
+            Assignment.course_id == chapter.course_id,
+            Assignment.chapter_id == chapter.id,
+        ).order_by(Assignment.created_at)
+    ).all()
+
+    if not assignments:
+        return "No assignments have been assigned for this chapter yet."
+
+    submissions = db.scalars(
+        select(AssignmentSubmission).where(
+            AssignmentSubmission.assignment_id.in_([a.id for a in assignments]),
+            AssignmentSubmission.student_id == student_id,
+        )
+    ).all()
+    sub_map: dict[uuid.UUID, AssignmentSubmission] = {s.assignment_id: s for s in submissions}
+
+    lines: list[str] = ["Assignments in this chapter:"]
+    for i, assignment in enumerate(assignments, 1):
+        header = f"{i}. {assignment.name} [{assignment.assignment_type.value}]"
+        if assignment.max_score is not None:
+            header += f"  (max {assignment.max_score} pts)"
+        lines.append(header)
+
+        sub = sub_map.get(assignment.id)
+        if sub is None:
+            lines.append("   Not submitted yet.")
+        else:
+            if sub.score is not None and assignment.max_score is not None:
+                score_str = f"{sub.score} / {assignment.max_score}"
+            elif sub.score is not None:
+                score_str = str(sub.score)
+            else:
+                score_str = "not graded"
+            lines.append(f"   Status: {sub.submission_status.value}  |  Score: {score_str}")
+
+            if sub.ai_feedback:
+                preview = sub.ai_feedback[:600].rstrip()
+                if len(sub.ai_feedback) > 600:
+                    preview += "…"
+                lines.append(f"   AI Feedback summary: {preview}")
+
+    return "\n".join(lines)
+
+
 def _build_chapter_prompt(
     chapter: Chapter,
     student_name: str,
+    student_id: uuid.UUID,
     db,
 ) -> str:
-    """Load the global chapter-performance prompt (or use the default) and format it."""
+    """
+    Build the chapter-performance prompt enriched with assignment scores and
+    AI feedback for the given student.
+    """
+    assignment_performance = _build_assignment_performance_block(chapter, student_id, db)
+
     row = db.scalar(select(ChapterPerformancePrompt))
     template = row.prompt if row else DEFAULT_CHAPTER_PERFORMANCE_PROMPT
-    return template.format(
-        chapter_title=chapter.title,
-        chapter_description=chapter.description or "N/A",
-        student_name=student_name,
-    )
+
+    try:
+        return template.format(
+            chapter_title=chapter.title,
+            chapter_description=chapter.description or "N/A",
+            student_name=student_name,
+            assignment_performance=assignment_performance,
+        )
+    except KeyError:
+        # Graceful fallback for older stored templates that lack {assignment_performance}
+        base = template.format(
+            chapter_title=chapter.title,
+            chapter_description=chapter.description or "N/A",
+            student_name=student_name,
+        )
+        return f"{base}\n\n{assignment_performance}"
 
 
 # ── Chapter Performance (teacher view) ─────────────────────────────────────────
@@ -542,7 +614,7 @@ async def generate_ai_comment(
     student = db.get(StudentUser, current_user.id)
     student_name = student.user.nickname if student else "the student"
 
-    prompt = _build_chapter_prompt(chapter, student_name, db)
+    prompt = _build_chapter_prompt(chapter, student_name, current_user.id, db)
     generated = await chat_complete(
         prompt,
         system="You are a helpful educational assistant. Always respond in markdown.",
@@ -587,7 +659,7 @@ async def stream_ai_comment(
     student = db.get(StudentUser, current_user.id)
     student_name = student.user.nickname if student else "the student"
 
-    prompt = _build_chapter_prompt(chapter, student_name, db)
+    prompt = _build_chapter_prompt(chapter, student_name, current_user.id, db)
 
     async def event_stream():
         accumulated = ""

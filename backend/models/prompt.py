@@ -17,9 +17,12 @@ from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 DEFAULT_CHAPTER_PERFORMANCE_PROMPT = (
     "Chapter: {chapter_title}\n"
     "Description: {chapter_description}\n\n"
-    "Based on the chapter content and {student_name}'s progress, provide a personalised, "
-    "encouraging AI study comment. Summarise key learning points, highlight any areas "
-    "that may need extra attention, and suggest next steps. "
+    "Student: {student_name}\n\n"
+    "{assignment_performance}\n\n"
+    "Based on the chapter content and the student's assignment performance above, "
+    "provide a personalised, encouraging AI study comment. "
+    "Summarise their performance, highlight strengths, identify areas that need "
+    "extra attention, and suggest specific next steps. "
     "Keep it concise and formatted in markdown."
 )
 
@@ -56,9 +59,11 @@ class ChapterPerformancePrompt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     Only one row exists in this table at a time.
 
     Template variables:
-        {chapter_title}       – chapter title
-        {chapter_description} – chapter description (or "N/A")
-        {student_name}        – student's nickname
+        {chapter_title}          – chapter title
+        {chapter_description}    – chapter description (or "N/A")
+        {student_name}           – student's nickname
+        {assignment_performance} – formatted block with each assignment's status,
+                                   score, and AI feedback for this student
     """
     __tablename__ = "chapter_performance_prompt"
 
