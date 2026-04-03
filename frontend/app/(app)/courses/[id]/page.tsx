@@ -89,6 +89,12 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
             icon: <LineChartOutlined style={{ fontSize: 28, color: "#fa8c16" }} />,
             href: `/courses/${id}/progress`,
           },
+          {
+            key: "chapter-performance",
+            label: "Chapter Performance",
+            icon: <ThunderboltOutlined style={{ fontSize: 28, color: "#52c41a" }} />,
+            href: `/courses/${id}/progress/chapters`,
+          },
         ]
       : []),
   ];

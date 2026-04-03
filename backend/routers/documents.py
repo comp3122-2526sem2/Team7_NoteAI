@@ -13,7 +13,7 @@ from schemas import AICheckRequest, DocumentOut, DocumentUpdate
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
-UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(Path(__file__).parent.parent / "uploads")))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_TYPES = {

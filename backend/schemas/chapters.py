@@ -38,3 +38,20 @@ class ChapterAICommentOut(BaseModel):
     comment: str
     created_at: datetime
     updated_at: datetime
+
+
+class ChapterSubmissionSummary(BaseModel):
+    assignment_id: uuid.UUID
+    assignment_name: str
+    status: str
+    score: Optional[float] = None
+    max_score: Optional[float] = None
+
+
+class ChapterStudentPerformance(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+    has_ai_comment: bool
+    ai_comment: Optional[str] = None
+    ai_comment_updated_at: Optional[datetime] = None
+    submissions: list[ChapterSubmissionSummary] = []

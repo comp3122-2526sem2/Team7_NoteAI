@@ -5,8 +5,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
-from anythingllm import ChatMode, get_client
 from deps import CurrentUser, DbDep, TeacherUser
+from openai_client import chat_complete
 from models import Assignment, AssignmentSubmission, Course, StudentUser, UserRole
 from models.assignment import SubmissionStatus
 from models.prompt import AssignmentFeedbackPrompt, DEFAULT_ASSIGNMENT_FEEDBACK_PROMPT
@@ -311,9 +311,11 @@ async def generate_ai_feedback(
         qa_content=qa_content,
     )
 
-    client = get_client()
-    response = await client.workspace.chat("assignments", prompt, mode=ChatMode.query)
-    sub.ai_feedback = response.textResponse
+    sub.ai_feedback = await chat_complete(
+        prompt,
+        system="You are a helpful educational assistant. Always respond in markdown.",
+        temperature=0.7,
+    )
     db.commit()
     db.refresh(sub)
     return sub

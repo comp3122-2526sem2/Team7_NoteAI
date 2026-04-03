@@ -12,18 +12,20 @@ from anythingllm import ChatMode, get_client
 from anythingllm.exceptions import AnythingLLMError
 from database import SessionLocal
 from deps import CurrentUser, DbDep, TeacherUser
-from models import Course, Document, UserRole
+from models import Assignment, AssignmentSubmission, Course, CourseStudent, Document, UserRole
+from openai_client import chat_complete
+from openai_client import get_client as get_openai_client, get_model as get_openai_model
 from models.chapter import Chapter, ChapterAIComment, ChapterUserWorkspace
 from models.prompt import ChapterPerformancePrompt, DEFAULT_CHAPTER_PERFORMANCE_PROMPT
 from models.chapter_thread import ChapterThread
 from models.document import ConversionStatus, DocumentType
 from models.user import StudentUser
-from schemas import ChapterCreate, ChapterOut, ChapterUpdate, ChapterAICommentOut, ThreadCreate, ThreadOut
+from schemas import ChapterCreate, ChapterOut, ChapterUpdate, ChapterAICommentOut, ChapterStudentPerformance, ThreadCreate, ThreadOut
 from schemas.documents import DocumentOut
 
 router = APIRouter(prefix="/courses/{course_id}/chapters", tags=["Chapters"])
 
-UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(Path(__file__).parent.parent / "uploads")))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_TYPES = {
@@ -424,6 +426,86 @@ def _build_chapter_prompt(
     )
 
 
+# ── Chapter Performance (teacher view) ─────────────────────────────────────────
+
+@router.get("/{chapter_id}/performance", response_model=list[ChapterStudentPerformance])
+def get_chapter_performance(
+    course_id: uuid.UUID,
+    chapter_id: uuid.UUID,
+    _: TeacherUser,
+    db: DbDep,
+):
+    """
+    Return performance data for every enrolled student in this chapter.
+    Includes their AI comment (if generated) and a summary of each assignment's submission.
+    """
+    _get_chapter_or_404(chapter_id, course_id, db)
+
+    enrollments = db.scalars(
+        select(CourseStudent).where(CourseStudent.course_id == course_id)
+    ).all()
+
+    comments = db.scalars(
+        select(ChapterAIComment).where(ChapterAIComment.chapter_id == chapter_id)
+    ).all()
+    comment_map: dict[uuid.UUID, ChapterAIComment] = {c.student_id: c for c in comments}
+
+    assignments = db.scalars(
+        select(Assignment).where(
+            Assignment.course_id == course_id,
+            Assignment.chapter_id == chapter_id,
+        ).order_by(Assignment.created_at)
+    ).all()
+
+    all_submissions = []
+    if assignments:
+        all_submissions = db.scalars(
+            select(AssignmentSubmission).where(
+                AssignmentSubmission.assignment_id.in_([a.id for a in assignments])
+            )
+        ).all()
+
+    subs_by_student: dict[uuid.UUID, list[AssignmentSubmission]] = {}
+    for sub in all_submissions:
+        subs_by_student.setdefault(sub.student_id, []).append(sub)
+
+    from schemas.chapters import ChapterSubmissionSummary
+
+    result = []
+    for enrollment in enrollments:
+        student = db.get(StudentUser, enrollment.student_id)
+        if not student:
+            continue
+
+        comment = comment_map.get(enrollment.student_id)
+        student_subs = subs_by_student.get(enrollment.student_id, [])
+        sub_by_assignment = {s.assignment_id: s for s in student_subs}
+
+        summaries = [
+            ChapterSubmissionSummary(
+                assignment_id=assignment.id,
+                assignment_name=assignment.name,
+                status=sub_by_assignment[assignment.id].submission_status.value
+                if assignment.id in sub_by_assignment else "pending",
+                score=sub_by_assignment[assignment.id].score
+                if assignment.id in sub_by_assignment else None,
+                max_score=assignment.max_score,
+            )
+            for assignment in assignments
+        ]
+
+        result.append(ChapterStudentPerformance(
+            student_id=enrollment.student_id,
+            student_name=student.user.nickname,
+            has_ai_comment=comment is not None,
+            ai_comment=comment.comment if comment else None,
+            ai_comment_updated_at=comment.updated_at if comment else None,
+            submissions=summaries,
+        ))
+
+    return result
+
+
 # ── Chapter AI Comments ────────────────────────────────────────────────────────
 
 @router.get("/{chapter_id}/ai-comment", response_model=ChapterAICommentOut | None)
@@ -452,7 +534,7 @@ async def generate_ai_comment(
     current_user: CurrentUser,
     db: DbDep,
 ):
-    """Generate or refresh the AI comment for the current student on this chapter."""
+    """Generate or refresh the AI study comment for the current student on this chapter."""
     if current_user.role != UserRole.student:
         raise HTTPException(status_code=403, detail="Only students can generate chapter AI comments.")
 
@@ -460,12 +542,12 @@ async def generate_ai_comment(
     student = db.get(StudentUser, current_user.id)
     student_name = student.user.nickname if student else "the student"
 
-    workspace_slug = await _ensure_student_workspace(chapter, current_user.id, db)
     prompt = _build_chapter_prompt(chapter, student_name, db)
-
-    client = get_client()
-    response = await client.workspace.chat(workspace_slug, prompt, mode=ChatMode.query)
-    generated = response.textResponse
+    generated = await chat_complete(
+        prompt,
+        system="You are a helpful educational assistant. Always respond in markdown.",
+        temperature=0.7,
+    )
 
     existing = db.scalar(
         select(ChapterAIComment).where(
@@ -497,7 +579,7 @@ async def stream_ai_comment(
     current_user: CurrentUser,
     db: DbDep,
 ):
-    """SSE endpoint – streams the AI comment and persists the final result."""
+    """SSE endpoint – streams the AI study comment via OpenAI and persists the result."""
     if current_user.role != UserRole.student:
         raise HTTPException(status_code=403, detail="Only students can stream chapter AI comments.")
 
@@ -505,14 +587,25 @@ async def stream_ai_comment(
     student = db.get(StudentUser, current_user.id)
     student_name = student.user.nickname if student else "the student"
 
-    workspace_slug = await _ensure_student_workspace(chapter, current_user.id, db)
     prompt = _build_chapter_prompt(chapter, student_name, db)
 
     async def event_stream():
         accumulated = ""
-        client = get_client()
-        async for chunk in client.workspace.stream_chat(workspace_slug, prompt, mode=ChatMode.query):
-            token = chunk.textResponse or ""
+        openai = get_openai_client()
+        stream = await openai.chat.completions.create(
+            model=get_openai_model(),
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful educational assistant. Always respond in markdown.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+            stream=True,
+        )
+        async for chunk in stream:
+            token = chunk.choices[0].delta.content or ""
             if token:
                 accumulated += token
                 yield f"data: {token}\n\n"

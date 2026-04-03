@@ -154,6 +154,8 @@ export const chaptersApi = {
     ),
   deleteDocument: (courseId: string, chapterId: string, docId: string) =>
     api.delete(`/courses/${courseId}/chapters/${chapterId}/documents/${docId}`),
+  getChapterPerformance: (courseId: string, chapterId: string) =>
+    api.get<ChapterStudentPerformance[]>(`/courses/${courseId}/chapters/${chapterId}/performance`),
   listThreads: (courseId: string, chapterId: string) =>
     api.get<ChapterThread[]>(`/courses/${courseId}/chapters/${chapterId}/threads`),
   createThread: (courseId: string, chapterId: string, name: string) =>
@@ -256,6 +258,23 @@ export interface ChapterAIComment {
   comment: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface ChapterSubmissionSummary {
+  assignment_id: string;
+  assignment_name: string;
+  status: "pending" | "submitted" | "graded";
+  score?: number;
+  max_score?: number;
+}
+
+export interface ChapterStudentPerformance {
+  student_id: string;
+  student_name: string;
+  has_ai_comment: boolean;
+  ai_comment?: string;
+  ai_comment_updated_at?: string;
+  submissions: ChapterSubmissionSummary[];
 }
 
 // ── Assignment content (question types) ──────────────────────────────────────

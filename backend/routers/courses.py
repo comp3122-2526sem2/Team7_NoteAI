@@ -29,7 +29,7 @@ from schemas import (
 
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(Path(__file__).parent.parent / "uploads")))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 SYLLABUS_ALLOWED_TYPES: dict[str, str] = {
