@@ -9,6 +9,7 @@ from anythingllm import ChatMode, get_client
 from deps import CurrentUser, DbDep, TeacherUser
 from models import Assignment, AssignmentSubmission, Course, StudentUser, UserRole
 from models.assignment import SubmissionStatus
+from models.prompt import AssignmentFeedbackPrompt, DEFAULT_ASSIGNMENT_FEEDBACK_PROMPT
 from schemas import (
     AssignmentCreate,
     AssignmentOut,
@@ -294,16 +295,24 @@ async def generate_ai_feedback(
                 q_num += 1
                 _append_question(qa_lines, q_num, section, sub.answers)
 
-    prompt = (
-        f"Assignment: {assignment.name}\n"
-        f"Topic: {assignment.topic or 'N/A'}\n"
-        f"Max score: {assignment.max_score or 'N/A'}\n"
-        f"Student score: {sub.score or 'not graded yet'}\n\n"
-        + ("\n".join(qa_lines) + "\n\n" if qa_lines else
-           f"Student answer: {sub.student_feedback or sub.answers or 'none'}\n\n")
-        + f"Please provide constructive feedback for {student_name} on this assignment. "
-          f"For each question, comment on correctness and suggest improvements. "
-          f"Format your response in markdown."
+    qa_content = ("\n".join(qa_lines) + "\n\n") if qa_lines else (
+        f"Student answer: {sub.student_feedback or sub.answers or 'none'}\n\n"
+    )
+
+    # Load course-level custom prompt or fall back to default
+    prompt_row = db.scalar(
+        select(AssignmentFeedbackPrompt).where(
+            AssignmentFeedbackPrompt.course_id == assignment.course_id
+        )
+    )
+    template = prompt_row.prompt if prompt_row else DEFAULT_ASSIGNMENT_FEEDBACK_PROMPT
+    prompt = template.format(
+        assignment_name=assignment.name,
+        topic=assignment.topic or "N/A",
+        max_score=assignment.max_score or "N/A",
+        student_score=sub.score or "not graded yet",
+        student_name=student_name,
+        qa_content=qa_content,
     )
 
     client = get_client()

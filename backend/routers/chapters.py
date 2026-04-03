@@ -14,6 +14,7 @@ from database import SessionLocal
 from deps import CurrentUser, DbDep, TeacherUser
 from models import Course, Document, UserRole
 from models.chapter import Chapter, ChapterAIComment, ChapterUserWorkspace
+from models.prompt import ChapterPerformancePrompt, DEFAULT_CHAPTER_PERFORMANCE_PROMPT
 from models.chapter_thread import ChapterThread
 from models.document import ConversionStatus, DocumentType
 from models.user import StudentUser
@@ -406,6 +407,28 @@ async def delete_chapter_document(
     db.commit()
 
 
+# ── Prompt helper ─────────────────────────────────────────────────────────────
+
+def _build_chapter_prompt(
+    course_id: uuid.UUID,
+    chapter: Chapter,
+    student_name: str,
+    db,
+) -> str:
+    """Load the course-level chapter-performance prompt (or use the default) and format it."""
+    row = db.scalar(
+        select(ChapterPerformancePrompt).where(
+            ChapterPerformancePrompt.course_id == course_id
+        )
+    )
+    template = row.prompt if row else DEFAULT_CHAPTER_PERFORMANCE_PROMPT
+    return template.format(
+        chapter_title=chapter.title,
+        chapter_description=chapter.description or "N/A",
+        student_name=student_name,
+    )
+
+
 # ── Chapter AI Comments ────────────────────────────────────────────────────────
 
 @router.get("/{chapter_id}/ai-comment", response_model=ChapterAICommentOut | None)
@@ -442,17 +465,8 @@ async def generate_ai_comment(
     student = db.get(StudentUser, current_user.id)
     student_name = student.user.nickname if student else "the student"
 
-    # Use the student's own workspace (seeded with teacher docs)
     workspace_slug = await _ensure_student_workspace(chapter, current_user.id, db)
-
-    prompt = (
-        f"Chapter: {chapter.title}\n"
-        f"Description: {chapter.description or 'N/A'}\n\n"
-        f"Based on the chapter content and {student_name}'s progress, provide a personalised, "
-        f"encouraging AI study comment. Summarise key learning points, highlight any areas "
-        f"that may need extra attention, and suggest next steps. "
-        f"Keep it concise and formatted in markdown."
-    )
+    prompt = _build_chapter_prompt(course_id, chapter, student_name, db)
 
     client = get_client()
     response = await client.workspace.chat(workspace_slug, prompt, mode=ChatMode.query)
@@ -497,15 +511,7 @@ async def stream_ai_comment(
     student_name = student.user.nickname if student else "the student"
 
     workspace_slug = await _ensure_student_workspace(chapter, current_user.id, db)
-
-    prompt = (
-        f"Chapter: {chapter.title}\n"
-        f"Description: {chapter.description or 'N/A'}\n\n"
-        f"Based on the chapter content and {student_name}'s progress, provide a personalised, "
-        f"encouraging AI study comment. Summarise key learning points, highlight any areas "
-        f"that may need extra attention, and suggest next steps. "
-        f"Keep it concise and formatted in markdown."
-    )
+    prompt = _build_chapter_prompt(course_id, chapter, student_name, db)
 
     async def event_stream():
         accumulated = ""

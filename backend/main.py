@@ -19,6 +19,7 @@ from routers import (
     courses_router,
     documents_router,
     progress_router,
+    prompts_router,
     users_router,
 )
 
@@ -47,6 +48,7 @@ app.include_router(chapters_router)
 app.include_router(assignments_router)
 app.include_router(documents_router)
 app.include_router(progress_router)
+app.include_router(prompts_router)
 
 
 @app.get("/health", tags=["Health"])

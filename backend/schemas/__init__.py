@@ -12,6 +12,7 @@ from .progress import (
     TopicProgressOut, TopicProgressUpdate,
     AIRecommendationOut, GenerateRecommendationRequest,
 )
+from .prompts import PromptOut, PromptUpdate
 
 __all__ = [
     "RegisterRequest", "TokenResponse",
@@ -24,4 +25,5 @@ __all__ = [
     "DocumentOut", "DocumentUpdate", "AICheckRequest",
     "TopicProgressOut", "TopicProgressUpdate",
     "AIRecommendationOut", "GenerateRecommendationRequest",
+    "PromptOut", "PromptUpdate",
 ]

@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from .chapter import Chapter
     from .document import Document
     from .progress import StudentTopicProgress, StudentAIRecommendation
+    from .prompt import ChapterPerformancePrompt, AssignmentFeedbackPrompt
 
 
 class Course(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -39,6 +40,12 @@ class Course(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     student_ai_recommendations: Mapped[list["StudentAIRecommendation"]] = relationship(
         back_populates="course"
+    )
+    chapter_performance_prompt: Mapped["ChapterPerformancePrompt | None"] = relationship(
+        back_populates="course", uselist=False, cascade="all, delete-orphan"
+    )
+    assignment_feedback_prompt: Mapped["AssignmentFeedbackPrompt | None"] = relationship(
+        back_populates="course", uselist=False, cascade="all, delete-orphan"
     )
 
 

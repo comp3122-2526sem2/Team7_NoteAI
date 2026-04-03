@@ -6,6 +6,10 @@ from .chapter_thread import ChapterThread
 from .assignment import Assignment, CourseAssignment, AssignmentSubmission, AssignmentType, SubmissionStatus
 from .document import Document, DocumentType, ConversionStatus
 from .progress import StudentTopicProgress, StudentAIRecommendation, MasteryLevel
+from .prompt import (
+    ChapterPerformancePrompt, AssignmentFeedbackPrompt,
+    DEFAULT_CHAPTER_PERFORMANCE_PROMPT, DEFAULT_ASSIGNMENT_FEEDBACK_PROMPT,
+)
 
 __all__ = [
     "Base",
@@ -22,4 +26,7 @@ __all__ = [
     "Document", "DocumentType", "ConversionStatus",
     # progress
     "StudentTopicProgress", "StudentAIRecommendation", "MasteryLevel",
+    # prompt
+    "ChapterPerformancePrompt", "AssignmentFeedbackPrompt",
+    "DEFAULT_CHAPTER_PERFORMANCE_PROMPT", "DEFAULT_ASSIGNMENT_FEEDBACK_PROMPT",
 ]
