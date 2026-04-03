@@ -1,16 +1,18 @@
-import uuid
-from typing import TYPE_CHECKING
-from sqlalchemy import ForeignKey, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+"""
+Global AI prompt configuration tables.
+
+Each table holds at most one row (a singleton).  There is no per-course or
+per-chapter scoping — the prompts apply system-wide.
+
+Use Python str.format() syntax for template variables documented on each class.
+"""
+
+from sqlalchemy import Text
+from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
-if TYPE_CHECKING:
-    from .course import Course
-
 # ── Default prompt templates ───────────────────────────────────────────────────
-# Available variables are shown in the docstrings; use Python str.format() syntax.
 
 DEFAULT_CHAPTER_PERFORMANCE_PROMPT = (
     "Chapter: {chapter_title}\n"
@@ -32,34 +34,43 @@ DEFAULT_ASSIGNMENT_FEEDBACK_PROMPT = (
     "Format your response in markdown."
 )
 
+DEFAULT_SYLLABUS_GENERATION_PROMPT = (
+    "Course: {course_name}\n"
+    "Description: {course_description}\n\n"
+    "The following content was extracted from an uploaded file:\n"
+    "---\n"
+    "{file_content}\n"
+    "---\n\n"
+    "Using the file content above as the source material, generate a comprehensive, "
+    "well-structured course syllabus in markdown format. Include: an overview, "
+    "learning objectives, weekly/chapter breakdown with topics, recommended readings "
+    "or resources (if inferable), and assessment methods."
+)
+
+
+# ── Singleton prompt models ────────────────────────────────────────────────────
 
 class ChapterPerformancePrompt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """
-    Custom prompt template for generating per-student chapter AI study comments.
+    Global prompt template for generating per-student chapter AI study comments.
+    Only one row exists in this table at a time.
 
-    Available template variables:
+    Template variables:
         {chapter_title}       – chapter title
         {chapter_description} – chapter description (or "N/A")
         {student_name}        – student's nickname
     """
     __tablename__ = "chapter_performance_prompt"
-    __table_args__ = (UniqueConstraint("course_id"),)
 
-    course_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("course.id", ondelete="CASCADE"),
-        nullable=False,
-    )
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
-
-    course: Mapped["Course"] = relationship(back_populates="chapter_performance_prompt")
 
 
 class AssignmentFeedbackPrompt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """
-    Custom prompt template for generating AI feedback on student assignment submissions.
+    Global prompt template for generating AI feedback on student submissions.
+    Only one row exists in this table at a time.
 
-    Available template variables:
+    Template variables:
         {assignment_name} – assignment name
         {topic}           – topic (or "N/A")
         {max_score}       – maximum score (or "N/A")
@@ -68,13 +79,20 @@ class AssignmentFeedbackPrompt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         {qa_content}      – formatted question-and-answer block (or empty string)
     """
     __tablename__ = "assignment_feedback_prompt"
-    __table_args__ = (UniqueConstraint("course_id"),)
 
-    course_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("course.id", ondelete="CASCADE"),
-        nullable=False,
-    )
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
 
-    course: Mapped["Course"] = relationship(back_populates="assignment_feedback_prompt")
+
+class SyllabusGenerationPrompt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """
+    Global prompt template for generating a course syllabus from an uploaded file.
+    Only one row exists in this table at a time.
+
+    Template variables:
+        {course_name}        – course name
+        {course_description} – course description (or "N/A")
+        {file_content}       – text extracted from the uploaded file
+    """
+    __tablename__ = "syllabus_generation_prompt"
+
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)

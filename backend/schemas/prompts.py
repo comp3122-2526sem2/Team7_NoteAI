@@ -1,16 +1,12 @@
 import uuid
-from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from typing import Optional
+from pydantic import BaseModel
 
 
 class PromptOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    course_id: uuid.UUID
+    id: Optional[uuid.UUID] = None
     prompt: str
-    created_at: datetime
-    updated_at: datetime
+    is_default: bool = False
 
 
 class PromptUpdate(BaseModel):

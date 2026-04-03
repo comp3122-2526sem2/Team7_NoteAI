@@ -1,17 +1,19 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Card, Divider, Form, Input, Space, Table, Typography } from "antd";
-import { UserAddOutlined, DeleteOutlined } from "@ant-design/icons";
-import { coursesApi } from "@/lib/api";
+import { App, Button, Card, Divider, Form, Input, Space, Spin, Table, Typography, Upload } from "antd";
+import { UserAddOutlined, DeleteOutlined, InboxOutlined, LoadingOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { coursesApi, documentsApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { MarkdownInput } from "@/components/shared/markdown-input";
 import type { User } from "@/lib/api";
 
-const { Title } = Typography;
+const { Dragger } = Upload;
+
+const { Title, Text } = Typography;
 
 export default function CourseSettingsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -19,6 +21,8 @@ export default function CourseSettingsPage({ params }: { params: Promise<{ id: s
   const { message } = App.useApp();
   const qc = useQueryClient();
   const [newStudentId, setNewStudentId] = useState("");
+  const [syllabusUploading, setSyllabusUploading] = useState(false);
+  const [generatingDocId, setGeneratingDocId] = useState<string | null>(null);
 
   const { data: course, isLoading } = useQuery({
     queryKey: ["course", id],
@@ -59,6 +63,43 @@ export default function CourseSettingsPage({ params }: { params: Promise<{ id: s
     },
     onError: () => message.error("Failed to remove student"),
   });
+
+  // Poll document until generation finishes
+  const { data: genDoc } = useQuery({
+    queryKey: ["syllabus-job", generatingDocId],
+    queryFn: () => documentsApi.get(generatingDocId!).then((r) => r.data),
+    enabled: !!generatingDocId,
+    refetchInterval: (query) =>
+      query.state.data?.conversion_status === "pending" ? 3000 : false,
+  });
+
+  useEffect(() => {
+    if (!genDoc) return;
+    if (genDoc.conversion_status === "completed") {
+      qc.invalidateQueries({ queryKey: ["course", id] });
+      setGeneratingDocId(null);
+      message.success("Syllabus generated!");
+    } else if (genDoc.conversion_status === "failed") {
+      setGeneratingDocId(null);
+      message.error("Syllabus generation failed. Please try again.");
+    }
+  }, [genDoc, qc, id, message]);
+
+  const handleSyllabusUpload = async (file: File) => {
+    setSyllabusUploading(true);
+    try {
+      const { data } = await coursesApi.uploadSyllabus(id, file);
+      setGeneratingDocId(data.document_id);
+      message.info("File uploaded — generating syllabus in the background…");
+    } catch {
+      message.error("Failed to upload file.");
+    } finally {
+      setSyllabusUploading(false);
+    }
+    return false;
+  };
+
+  const isGenerating = !!generatingDocId;
 
   if (isLoading) return <LoadingSpinner />;
   if (!course) return <div>Course not found.</div>;
@@ -118,6 +159,45 @@ export default function CourseSettingsPage({ params }: { params: Promise<{ id: s
             </Button>
           </Form.Item>
         </Form>
+      </Card>
+
+      <Card
+        title={
+          <span>
+            <ThunderboltOutlined style={{ color: "#1677ff", marginRight: 8 }} />
+            Generate Syllabus from File
+          </span>
+        }
+        style={{ marginBottom: 24 }}
+      >
+        <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
+          Upload a PDF, Word document, or text file and AI will extract a structured
+          markdown syllabus from its contents. This will overwrite the current syllabus.
+        </Text>
+        {isGenerating ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "24px 0" }}>
+            <Spin indicator={<LoadingOutlined spin />} />
+            <Text type="secondary">Generating syllabus in the background…</Text>
+          </div>
+        ) : (
+          <Dragger
+            accept=".pdf,.docx,.doc,.txt,.md"
+            showUploadList={false}
+            disabled={syllabusUploading}
+            beforeUpload={(file) => {
+              handleSyllabusUpload(file as unknown as File);
+              return false;
+            }}
+          >
+            <p className="ant-upload-drag-icon">
+              <InboxOutlined />
+            </p>
+            <p className="ant-upload-text">
+              {syllabusUploading ? "Uploading…" : "Click or drag a file here to generate a syllabus"}
+            </p>
+            <p className="ant-upload-hint">Supports PDF, DOCX, DOC, TXT, MD</p>
+          </Dragger>
+        )}
       </Card>
 
       <Divider />

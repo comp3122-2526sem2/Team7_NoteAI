@@ -69,6 +69,13 @@ export const coursesApi = {
     api.delete(`/courses/${courseId}/students/${studentId}`),
   listTeachers: (courseId: string) =>
     api.get<User[]>(`/courses/${courseId}/teachers`),
+  uploadSyllabus: (courseId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<SyllabusUploadOut>(`/courses/${courseId}/syllabus/upload`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
 };
 
 // ── Assignments ───────────────────────────────────────────────────────────────
@@ -217,6 +224,13 @@ export interface Course {
   syllabus?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface SyllabusUploadOut {
+  course_id: string;
+  document_id: string;
+  /** Always "pending" — generation runs in the background. */
+  status: "pending";
 }
 
 export interface Chapter {

@@ -26,6 +26,17 @@ class CourseOut(BaseModel):
     updated_at: datetime
 
 
+class SyllabusUploadOut(BaseModel):
+    """
+    Returned immediately after a syllabus file is accepted.
+    AI generation runs in the background; poll the document's
+    conversion_status to know when it is complete or failed.
+    """
+    course_id: uuid.UUID
+    document_id: uuid.UUID
+    status: str = "pending"
+
+
 class EnrollStudentRequest(BaseModel):
     student_id: str
 

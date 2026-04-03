@@ -299,12 +299,8 @@ async def generate_ai_feedback(
         f"Student answer: {sub.student_feedback or sub.answers or 'none'}\n\n"
     )
 
-    # Load course-level custom prompt or fall back to default
-    prompt_row = db.scalar(
-        select(AssignmentFeedbackPrompt).where(
-            AssignmentFeedbackPrompt.course_id == assignment.course_id
-        )
-    )
+    # Load the global custom prompt or fall back to default
+    prompt_row = db.scalar(select(AssignmentFeedbackPrompt))
     template = prompt_row.prompt if prompt_row else DEFAULT_ASSIGNMENT_FEEDBACK_PROMPT
     prompt = template.format(
         assignment_name=assignment.name,

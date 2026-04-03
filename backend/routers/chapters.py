@@ -410,17 +410,12 @@ async def delete_chapter_document(
 # ── Prompt helper ─────────────────────────────────────────────────────────────
 
 def _build_chapter_prompt(
-    course_id: uuid.UUID,
     chapter: Chapter,
     student_name: str,
     db,
 ) -> str:
-    """Load the course-level chapter-performance prompt (or use the default) and format it."""
-    row = db.scalar(
-        select(ChapterPerformancePrompt).where(
-            ChapterPerformancePrompt.course_id == course_id
-        )
-    )
+    """Load the global chapter-performance prompt (or use the default) and format it."""
+    row = db.scalar(select(ChapterPerformancePrompt))
     template = row.prompt if row else DEFAULT_CHAPTER_PERFORMANCE_PROMPT
     return template.format(
         chapter_title=chapter.title,
@@ -466,7 +461,7 @@ async def generate_ai_comment(
     student_name = student.user.nickname if student else "the student"
 
     workspace_slug = await _ensure_student_workspace(chapter, current_user.id, db)
-    prompt = _build_chapter_prompt(course_id, chapter, student_name, db)
+    prompt = _build_chapter_prompt(chapter, student_name, db)
 
     client = get_client()
     response = await client.workspace.chat(workspace_slug, prompt, mode=ChatMode.query)
@@ -511,7 +506,7 @@ async def stream_ai_comment(
     student_name = student.user.nickname if student else "the student"
 
     workspace_slug = await _ensure_student_workspace(chapter, current_user.id, db)
-    prompt = _build_chapter_prompt(course_id, chapter, student_name, db)
+    prompt = _build_chapter_prompt(chapter, student_name, db)
 
     async def event_stream():
         accumulated = ""

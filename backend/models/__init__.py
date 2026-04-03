@@ -7,8 +7,9 @@ from .assignment import Assignment, CourseAssignment, AssignmentSubmission, Assi
 from .document import Document, DocumentType, ConversionStatus
 from .progress import StudentTopicProgress, StudentAIRecommendation, MasteryLevel
 from .prompt import (
-    ChapterPerformancePrompt, AssignmentFeedbackPrompt,
+    ChapterPerformancePrompt, AssignmentFeedbackPrompt, SyllabusGenerationPrompt,
     DEFAULT_CHAPTER_PERFORMANCE_PROMPT, DEFAULT_ASSIGNMENT_FEEDBACK_PROMPT,
+    DEFAULT_SYLLABUS_GENERATION_PROMPT,
 )
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     # progress
     "StudentTopicProgress", "StudentAIRecommendation", "MasteryLevel",
     # prompt
-    "ChapterPerformancePrompt", "AssignmentFeedbackPrompt",
+    "ChapterPerformancePrompt", "AssignmentFeedbackPrompt", "SyllabusGenerationPrompt",
     "DEFAULT_CHAPTER_PERFORMANCE_PROMPT", "DEFAULT_ASSIGNMENT_FEEDBACK_PROMPT",
+    "DEFAULT_SYLLABUS_GENERATION_PROMPT",
 ]

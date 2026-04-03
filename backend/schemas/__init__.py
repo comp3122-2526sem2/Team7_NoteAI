@@ -1,6 +1,6 @@
 from .auth import RegisterRequest, TokenResponse
 from .users import UserOut, UserUpdate
-from .courses import CourseCreate, CourseUpdate, CourseOut, EnrollStudentRequest, AssignTeacherRequest
+from .courses import CourseCreate, CourseUpdate, CourseOut, SyllabusUploadOut, EnrollStudentRequest, AssignTeacherRequest
 from .chapters import ChapterCreate, ChapterUpdate, ChapterOut, ChapterAICommentOut
 from .threads import ThreadCreate, ThreadOut
 from .assignments import (
@@ -17,7 +17,7 @@ from .prompts import PromptOut, PromptUpdate
 __all__ = [
     "RegisterRequest", "TokenResponse",
     "UserOut", "UserUpdate",
-    "CourseCreate", "CourseUpdate", "CourseOut", "EnrollStudentRequest", "AssignTeacherRequest",
+    "CourseCreate", "CourseUpdate", "CourseOut", "SyllabusUploadOut", "EnrollStudentRequest", "AssignTeacherRequest",
     "ChapterCreate", "ChapterUpdate", "ChapterOut", "ChapterAICommentOut",
     "ThreadCreate", "ThreadOut",
     "AssignmentCreate", "AssignmentUpdate", "AssignmentOut",
