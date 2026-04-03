@@ -335,6 +335,8 @@ export interface Submission {
   id: string;
   assignment_id: string;
   student_id: string;
+  student_name?: string;
+  student_username?: string;
   submission_date?: string;
   submission_status: "pending" | "submitted" | "graded";
   ai_feedback?: string;

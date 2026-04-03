@@ -17,6 +17,7 @@ from schemas import (
     SubmissionCreate,
     SubmissionGrade,
     SubmissionOut,
+    SubmissionWithStudentOut,
 )
 
 router = APIRouter(prefix="/courses/{course_id}/assignments", tags=["Assignments"])
@@ -147,6 +148,15 @@ def delete_assignment(course_id: uuid.UUID, assignment_id: uuid.UUID, _: Teacher
     db.commit()
 
 
+def _enrich_submission(sub: AssignmentSubmission) -> dict:
+    """Serialise a submission and attach the student's display name / username."""
+    data = SubmissionOut.model_validate(sub).model_dump()
+    if sub.student and sub.student.user:
+        data["student_name"] = sub.student.user.nickname
+        data["student_username"] = sub.student.user.username
+    return data
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _append_question(
@@ -180,7 +190,7 @@ def _append_question(
 
 # ── Submissions ───────────────────────────────────────────────────────────────
 
-@router.get("/{assignment_id}/submissions", response_model=list[SubmissionOut])
+@router.get("/{assignment_id}/submissions", response_model=list[SubmissionWithStudentOut])
 def list_submissions(
     course_id: uuid.UUID, assignment_id: uuid.UUID, current_user: CurrentUser, db: DbDep
 ):
@@ -191,7 +201,7 @@ def list_submissions(
     # Students can only see their own submission
     if current_user.role == UserRole.student:
         query = query.where(AssignmentSubmission.student_id == current_user.id)
-    return db.scalars(query).all()
+    return [_enrich_submission(sub) for sub in db.scalars(query).all()]
 
 
 @router.post("/{assignment_id}/submit", response_model=SubmissionOut, status_code=status.HTTP_201_CREATED)
@@ -229,7 +239,7 @@ def submit_assignment(
     return submission
 
 
-@router.get("/{assignment_id}/submissions/{submission_id}", response_model=SubmissionOut)
+@router.get("/{assignment_id}/submissions/{submission_id}", response_model=SubmissionWithStudentOut)
 def get_submission(
     course_id: uuid.UUID,
     assignment_id: uuid.UUID,
@@ -240,10 +250,10 @@ def get_submission(
     sub = _get_submission_or_404(submission_id, assignment_id, db)
     if current_user.role == UserRole.student and sub.student_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied.")
-    return sub
+    return _enrich_submission(sub)
 
 
-@router.put("/{assignment_id}/submissions/{submission_id}/grade", response_model=SubmissionOut)
+@router.put("/{assignment_id}/submissions/{submission_id}/grade", response_model=SubmissionWithStudentOut)
 def grade_submission(
     course_id: uuid.UUID,
     assignment_id: uuid.UUID,
@@ -260,10 +270,10 @@ def grade_submission(
     sub.submission_status = SubmissionStatus.graded
     db.commit()
     db.refresh(sub)
-    return sub
+    return _enrich_submission(sub)
 
 
-@router.post("/{assignment_id}/submissions/{submission_id}/ai-feedback", response_model=SubmissionOut)
+@router.post("/{assignment_id}/submissions/{submission_id}/ai-feedback", response_model=SubmissionWithStudentOut)
 async def generate_ai_feedback(
     course_id: uuid.UUID,
     assignment_id: uuid.UUID,
@@ -318,4 +328,4 @@ async def generate_ai_feedback(
     )
     db.commit()
     db.refresh(sub)
-    return sub
+    return _enrich_submission(sub)

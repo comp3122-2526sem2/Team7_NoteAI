@@ -115,3 +115,9 @@ class SubmissionOut(BaseModel):
     teacher_feedback: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class SubmissionWithStudentOut(SubmissionOut):
+    """SubmissionOut enriched with the submitting student's display info."""
+    student_name: str | None = None
+    student_username: str | None = None

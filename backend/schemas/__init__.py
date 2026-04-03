@@ -5,7 +5,7 @@ from .chapters import ChapterCreate, ChapterUpdate, ChapterOut, ChapterAIComment
 from .threads import ThreadCreate, ThreadOut
 from .assignments import (
     AssignmentCreate, AssignmentUpdate, AssignmentOut,
-    SubmissionCreate, SubmissionGrade, SubmissionOut,
+    SubmissionCreate, SubmissionGrade, SubmissionOut, SubmissionWithStudentOut,
 )
 from .documents import DocumentOut, DocumentUpdate, AICheckRequest
 from .progress import (
@@ -21,7 +21,7 @@ __all__ = [
     "ChapterCreate", "ChapterUpdate", "ChapterOut", "ChapterAICommentOut", "ChapterStudentPerformance",
     "ThreadCreate", "ThreadOut",
     "AssignmentCreate", "AssignmentUpdate", "AssignmentOut",
-    "SubmissionCreate", "SubmissionGrade", "SubmissionOut",
+    "SubmissionCreate", "SubmissionGrade", "SubmissionOut", "SubmissionWithStudentOut",
     "DocumentOut", "DocumentUpdate", "AICheckRequest",
     "TopicProgressOut", "TopicProgressUpdate",
     "AIRecommendationOut", "GenerateRecommendationRequest",

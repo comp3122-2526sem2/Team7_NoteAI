@@ -431,7 +431,23 @@ function SubmissionCard({
   const hasContent = !!assignment.content?.sections?.length;
 
   return (
-    <Card style={{ marginBottom: 16 }} extra={<StatusBadge status={sub.submission_status} />} size="small">
+    <Card
+      style={{ marginBottom: 16 }}
+      size="small"
+      title={
+        sub.student_name ? (
+          <Space>
+            <Text strong>{sub.student_name}</Text>
+            {sub.student_username && (
+              <Text type="secondary" style={{ fontSize: 12 }}>@{sub.student_username}</Text>
+            )}
+          </Space>
+        ) : (
+          <Text type="secondary" style={{ fontSize: 12 }}>Student ID: {sub.student_id}</Text>
+        )
+      }
+      extra={<StatusBadge status={sub.submission_status} />}
+    >
       {/* Student answers */}
       {sub.answers && hasContent ? (
         <>
