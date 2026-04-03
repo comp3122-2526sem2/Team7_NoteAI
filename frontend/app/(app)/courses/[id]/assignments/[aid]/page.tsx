@@ -2,11 +2,12 @@
 
 import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import {
-  App, Button, Card, Col, Divider, Form, Input, InputNumber,
-  Radio, Row, Space, Tag, Typography,
+  App, Button, Card, Divider, Input, Radio, Space, Table, Tag, Typography,
 } from "antd";
-import { ThunderboltOutlined } from "@ant-design/icons";
+import type { ColumnsType } from "antd/es/table";
+import { EyeOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { assignmentsApi } from "@/lib/api";
 import type { Assignment, AssignmentContent, MCQuestion, LongQuestion, PassageSection, Submission } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,7 +19,7 @@ const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
 
-// ── Question renderer (student view) ─────────────────────────────────────────
+// ── Question renderer ─────────────────────────────────────────────────────────
 
 function renderQuestions(
   content: AssignmentContent,
@@ -45,52 +46,31 @@ function renderQuestions(
           </Paragraph>
         </Card>
       );
-
       for (const sq of passage.questions) {
         qNum++;
-        const n = qNum; // capture current value — prevents closure-in-loop bug
+        const n = qNum;
         nodes.push(
-          <QuestionBlock
-            key={`q-${n}`}
-            num={n}
-            question={sq}
-            answer={answers[String(n)] ?? ""}
-            onChange={(v) => onChange(String(n), v)}
-            readOnly={readOnly}
-            showSuggestedAnswer={showSuggestedAnswer}
-          />
+          <QuestionBlock key={`q-${n}`} num={n} question={sq}
+            answer={answers[String(n)] ?? ""} onChange={(v) => onChange(String(n), v)}
+            readOnly={readOnly} showSuggestedAnswer={showSuggestedAnswer} />
         );
       }
     } else {
       qNum++;
-      const n = qNum; // capture current value
+      const n = qNum;
       nodes.push(
-        <QuestionBlock
-          key={`q-${n}`}
-          num={n}
-          question={section as MCQuestion | LongQuestion}
-          answer={answers[String(n)] ?? ""}
-          onChange={(v) => onChange(String(n), v)}
-          readOnly={readOnly}
-          showSuggestedAnswer={showSuggestedAnswer}
-        />
+        <QuestionBlock key={`q-${n}`} num={n} question={section as MCQuestion | LongQuestion}
+          answer={answers[String(n)] ?? ""} onChange={(v) => onChange(String(n), v)}
+          readOnly={readOnly} showSuggestedAnswer={showSuggestedAnswer} />
       );
     }
   }
-
   return nodes;
 }
 
 const OPTION_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-function QuestionBlock({
-  num,
-  question,
-  answer,
-  onChange,
-  readOnly,
-  showSuggestedAnswer = false,
-}: {
+function QuestionBlock({ num, question, answer, onChange, readOnly, showSuggestedAnswer = false }: {
   num: number;
   question: MCQuestion | LongQuestion;
   answer: string;
@@ -113,11 +93,7 @@ function QuestionBlock({
 
       {question.type === "mc" ? (
         <>
-          <Radio.Group
-            value={answer || undefined}
-            onChange={(e) => !readOnly && onChange(e.target.value)}
-            disabled={readOnly}
-          >
+          <Radio.Group value={answer || undefined} onChange={(e) => !readOnly && onChange(e.target.value)} disabled={readOnly}>
             <Space direction="vertical">
               {mc.options.map((opt, idx) => {
                 const label = OPTION_LABELS[idx];
@@ -126,9 +102,7 @@ function QuestionBlock({
                   <Radio key={label} value={label}>
                     <Text strong style={{ marginRight: 6 }}>{label}.</Text>
                     {opt}
-                    {isCorrect && (
-                      <Tag color="green" style={{ marginLeft: 8, fontSize: 11 }}>correct</Tag>
-                    )}
+                    {isCorrect && <Tag color="green" style={{ marginLeft: 8, fontSize: 11 }}>correct</Tag>}
                   </Radio>
                 );
               })}
@@ -142,20 +116,10 @@ function QuestionBlock({
         </>
       ) : (
         <>
-          <TextArea
-            rows={4}
-            placeholder="Write your answer here…"
-            value={answer}
-            onChange={(e) => !readOnly && onChange(e.target.value)}
-            disabled={readOnly}
-            style={{ maxWidth: 600 }}
-          />
+          <TextArea rows={4} placeholder="Write your answer here…" value={answer}
+            onChange={(e) => !readOnly && onChange(e.target.value)} disabled={readOnly} style={{ maxWidth: 600 }} />
           {showSuggestedAnswer && long.suggested_answer && (
-            <div style={{
-              marginTop: 8, padding: "8px 12px",
-              background: "#f6ffed", border: "1px solid #b7eb8f", borderRadius: 6,
-              maxWidth: 600,
-            }}>
+            <div style={{ marginTop: 8, padding: "8px 12px", background: "#f6ffed", border: "1px solid #b7eb8f", borderRadius: 6, maxWidth: 600 }}>
               <Text type="secondary" style={{ fontSize: 12 }}>Suggested answer</Text>
               <Paragraph style={{ margin: 0, marginTop: 2 }}>{long.suggested_answer}</Paragraph>
             </div>
@@ -166,33 +130,18 @@ function QuestionBlock({
   );
 }
 
-
-// ── Student answers display (read-only, e.g. after submission) ────────────────
-
-function AnswersDisplay({
-  content,
-  answers,
-  showSuggestedAnswer = false,
-}: {
+export function AnswersDisplay({ content, answers, showSuggestedAnswer = false }: {
   content: AssignmentContent;
   answers: Record<string, string>;
   showSuggestedAnswer?: boolean;
 }) {
-  return (
-    <div>
-      {renderQuestions(content, answers, () => {}, true, showSuggestedAnswer)}
-    </div>
-  );
+  return <div>{renderQuestions(content, answers, () => {}, true, showSuggestedAnswer)}</div>;
 }
 
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function AssignmentDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string; aid: string }>;
-}) {
+export default function AssignmentDetailPage({ params }: { params: Promise<{ id: string; aid: string }> }) {
   const { id: courseId, aid: assignmentId } = use(params);
   const { isTeacher, user } = useAuth();
   const { message } = App.useApp();
@@ -209,23 +158,14 @@ export default function AssignmentDetailPage({
     enabled: !!assignment,
   });
 
-  // Per-question answers state
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [freeText, setFreeText] = useState("");
-  const [gradeData, setGradeData] = useState<Record<string, { score: string; feedback: string }>>({});
-
-  const setAnswer = (key: string, value: string) =>
-    setAnswers((prev) => ({ ...prev, [key]: value }));
 
   const hasContent = !!assignment?.content?.sections?.length;
 
   const submitMutation = useMutation({
     mutationFn: () =>
-      assignmentsApi.submit(courseId, assignmentId,
-        hasContent
-          ? { answers }
-          : { student_feedback: freeText }
-      ),
+      assignmentsApi.submit(courseId, assignmentId, hasContent ? { answers } : { student_feedback: freeText }),
     onSuccess: () => {
       message.success("Assignment submitted");
       qc.invalidateQueries({ queryKey: ["submissions", courseId, assignmentId] });
@@ -233,26 +173,6 @@ export default function AssignmentDetailPage({
       setFreeText("");
     },
     onError: () => message.error("Failed to submit"),
-  });
-
-  const gradeMutation = useMutation({
-    mutationFn: ({ subId, score, feedback }: { subId: string; score: number; feedback: string }) =>
-      assignmentsApi.grade(courseId, assignmentId, subId, { score, teacher_feedback: feedback }),
-    onSuccess: () => {
-      message.success("Graded");
-      qc.invalidateQueries({ queryKey: ["submissions", courseId, assignmentId] });
-    },
-    onError: () => message.error("Failed to grade"),
-  });
-
-  const aiFeedbackMutation = useMutation({
-    mutationFn: (subId: string) =>
-      assignmentsApi.generateAiFeedback(courseId, assignmentId, subId),
-    onSuccess: () => {
-      message.success("AI feedback generated");
-      qc.invalidateQueries({ queryKey: ["submissions", courseId, assignmentId] });
-    },
-    onError: () => message.error("Failed to generate feedback"),
   });
 
   if (isLoading) return <LoadingSpinner />;
@@ -287,54 +207,34 @@ export default function AssignmentDetailPage({
 
       <Divider />
 
-      {/* Student view */}
+      {/* ── Student view ── */}
       {!isTeacher && (
         <>
           {!mySubmission ? (
             <Card title="Answer Questions">
               {hasContent ? (
                 <>
-                  {renderQuestions(assignment.content!, answers, setAnswer, false)}
+                  {renderQuestions(assignment.content!, answers, (k, v) => setAnswers((p) => ({ ...p, [k]: v })), false)}
                   <Divider style={{ margin: "8px 0 16px" }} />
-                  <Button
-                    type="primary"
-                    onClick={() => submitMutation.mutate()}
-                    loading={submitMutation.isPending}
-                    disabled={Object.keys(answers).length === 0}
-                  >
+                  <Button type="primary" onClick={() => submitMutation.mutate()} loading={submitMutation.isPending}
+                    disabled={Object.keys(answers).length === 0}>
                     Submit
                   </Button>
                 </>
               ) : (
                 <>
-                  <TextArea
-                    placeholder="Your answer or comments…"
-                    value={freeText}
-                    onChange={(e) => setFreeText(e.target.value)}
-                    rows={5}
-                    style={{ marginBottom: 12 }}
-                  />
-                  <Button
-                    type="primary"
-                    onClick={() => submitMutation.mutate()}
-                    loading={submitMutation.isPending}
-                  >
+                  <TextArea placeholder="Your answer or comments…" value={freeText}
+                    onChange={(e) => setFreeText(e.target.value)} rows={5} style={{ marginBottom: 12 }} />
+                  <Button type="primary" onClick={() => submitMutation.mutate()} loading={submitMutation.isPending}>
                     Submit
                   </Button>
                 </>
               )}
             </Card>
           ) : (
-            <Card
-              title="Your Submission"
-              extra={<StatusBadge status={mySubmission.submission_status} />}
-            >
-              {/* Show structured answers if available */}
+            <Card title="Your Submission" extra={<StatusBadge status={mySubmission.submission_status} />}>
               {mySubmission.answers && hasContent ? (
-                <AnswersDisplay
-                  content={assignment.content!}
-                  answers={mySubmission.answers}
-                />
+                <AnswersDisplay content={assignment.content!} answers={mySubmission.answers} />
               ) : mySubmission.student_feedback ? (
                 <div style={{ marginBottom: 12 }}>
                   <Text strong>Your answer</Text>
@@ -342,12 +242,10 @@ export default function AssignmentDetailPage({
                 </div>
               ) : null}
 
-              {mySubmission.score !== undefined && mySubmission.score !== null && (
+              {mySubmission.score != null && (
                 <div style={{ marginBottom: 12 }}>
                   <Text strong>Score: </Text>
-                  <Text style={{ fontSize: 18 }}>
-                    {mySubmission.score} / {assignment.max_score ?? "?"}
-                  </Text>
+                  <Text style={{ fontSize: 18 }}>{mySubmission.score} / {assignment.max_score ?? "?"}</Text>
                 </div>
               )}
               {mySubmission.teacher_feedback && (
@@ -369,142 +267,101 @@ export default function AssignmentDetailPage({
         </>
       )}
 
-      {/* Teacher view */}
+      {/* ── Teacher view: submissions table ── */}
       {isTeacher && (
-        <div>
-          <Title level={4}>Submissions ({submissions?.length ?? 0})</Title>
-          {!submissions?.length ? (
-            <Text type="secondary">No submissions yet.</Text>
-          ) : (
-            submissions.map((sub) => (
-              <SubmissionCard
-                key={sub.id}
-                sub={sub}
-                assignment={assignment}
-                gradeData={gradeData[sub.id] ?? {
-                  score: String(sub.score ?? ""),
-                  feedback: sub.teacher_feedback ?? "",
-                }}
-                onChange={(data) => setGradeData((p) => ({ ...p, [sub.id]: data }))}
-                onGrade={() => {
-                  const d = gradeData[sub.id];
-                  gradeMutation.mutate({
-                    subId: sub.id,
-                    score: Number(d?.score ?? sub.score ?? 0),
-                    feedback: d?.feedback ?? sub.teacher_feedback ?? "",
-                  });
-                }}
-                onAiFeedback={() => aiFeedbackMutation.mutate(sub.id)}
-                isGrading={gradeMutation.isPending}
-                isGenerating={aiFeedbackMutation.isPending}
-              />
-            ))
-          )}
-        </div>
+        <SubmissionsTable
+          submissions={submissions ?? []}
+          assignment={assignment}
+          courseId={courseId}
+          assignmentId={assignmentId}
+        />
       )}
     </div>
   );
 }
 
 
-// ── Submission card (teacher grading view) ────────────────────────────────────
+// ── Teacher submissions table ─────────────────────────────────────────────────
 
-function SubmissionCard({
-  sub,
-  assignment,
-  gradeData,
-  onChange,
-  onGrade,
-  onAiFeedback,
-  isGrading,
-  isGenerating,
-}: {
-  sub: Submission;
+function SubmissionsTable({ submissions, assignment, courseId, assignmentId }: {
+  submissions: Submission[];
   assignment: Assignment;
-  gradeData: { score: string; feedback: string };
-  onChange: (d: { score: string; feedback: string }) => void;
-  onGrade: () => void;
-  onAiFeedback: () => void;
-  isGrading: boolean;
-  isGenerating: boolean;
+  courseId: string;
+  assignmentId: string;
 }) {
-  const hasContent = !!assignment.content?.sections?.length;
+  const columns: ColumnsType<Submission> = [
+    {
+      title: "Student",
+      key: "student",
+      render: (_: unknown, sub: Submission) => (
+        <Space direction="vertical" size={0}>
+          <Text strong>{sub.student_name ?? "—"}</Text>
+          {sub.student_username && (
+            <Text type="secondary" style={{ fontSize: 12 }}>@{sub.student_username}</Text>
+          )}
+        </Space>
+      ),
+    },
+    {
+      title: "Submitted",
+      dataIndex: "submission_date",
+      key: "submission_date",
+      render: (d: string | undefined) =>
+        d ? new Date(d).toLocaleString() : <Text type="secondary">—</Text>,
+    },
+    {
+      title: "Status",
+      key: "status",
+      render: (_: unknown, sub: Submission) => <StatusBadge status={sub.submission_status} />,
+    },
+    {
+      title: "Score",
+      key: "score",
+      render: (_: unknown, sub: Submission) =>
+        sub.score != null ? (
+          <Text>{sub.score}{assignment.max_score ? ` / ${assignment.max_score}` : ""}</Text>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
+    },
+    {
+      title: "AI Feedback",
+      key: "ai_feedback",
+      render: (_: unknown, sub: Submission) =>
+        sub.ai_feedback ? (
+          <Tag color="blue" icon={<ThunderboltOutlined />}>Generated</Tag>
+        ) : (
+          <Text type="secondary">—</Text>
+        ),
+    },
+    {
+      title: "",
+      key: "action",
+      align: "right",
+      render: (_: unknown, sub: Submission) => (
+        <Link href={`/courses/${courseId}/assignments/${assignmentId}/submissions/${sub.id}`}>
+          <Button size="small" icon={<EyeOutlined />}>Review</Button>
+        </Link>
+      ),
+    },
+  ];
 
   return (
-    <Card
-      style={{ marginBottom: 16 }}
-      size="small"
-      title={
-        sub.student_name ? (
-          <Space>
-            <Text strong>{sub.student_name}</Text>
-            {sub.student_username && (
-              <Text type="secondary" style={{ fontSize: 12 }}>@{sub.student_username}</Text>
-            )}
-          </Space>
-        ) : (
-          <Text type="secondary" style={{ fontSize: 12 }}>Student ID: {sub.student_id}</Text>
-        )
-      }
-      extra={<StatusBadge status={sub.submission_status} />}
-    >
-      {/* Student answers */}
-      {sub.answers && hasContent ? (
-        <>
-          <Text type="secondary" style={{ fontSize: 12 }}>Student Answers</Text>
-          <div style={{ marginTop: 8, marginBottom: 12 }}>
-            <AnswersDisplay
-              content={assignment.content!}
-              answers={sub.answers}
-              showSuggestedAnswer
-            />
-          </div>
-        </>
-      ) : sub.student_feedback ? (
-        <div style={{ marginBottom: 12 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>Student Answer</Text>
-          <p>{sub.student_feedback}</p>
-        </div>
-      ) : null}
-
-      <Row gutter={16} style={{ marginBottom: 12 }}>
-        <Col span={8}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Score{assignment.max_score ? ` / ${assignment.max_score}` : ""}
-          </Text>
-          <InputNumber
-            value={Number(gradeData.score) || undefined}
-            onChange={(v) => onChange({ ...gradeData, score: String(v ?? "") })}
-            style={{ display: "block", width: "100%", marginTop: 4 }}
-            size="small"
-          />
-        </Col>
-      </Row>
-      <div style={{ marginBottom: 12 }}>
-        <Text type="secondary" style={{ fontSize: 12 }}>Teacher Feedback</Text>
-        <Input.TextArea
-          value={gradeData.feedback}
-          onChange={(e) => onChange({ ...gradeData, feedback: e.target.value })}
-          rows={3}
-          style={{ marginTop: 4 }}
+    <div>
+      <Title level={4} style={{ marginBottom: 16 }}>
+        Submissions ({submissions.length})
+      </Title>
+      {submissions.length === 0 ? (
+        <Text type="secondary">No submissions yet.</Text>
+      ) : (
+        <Table
+          dataSource={submissions}
+          columns={columns}
+          rowKey="id"
+          pagination={false}
+          size="middle"
         />
-      </div>
-      <Space>
-        <Button type="primary" size="small" onClick={onGrade} loading={isGrading}>
-          Save Grade
-        </Button>
-        <Button icon={<ThunderboltOutlined />} size="small" onClick={onAiFeedback} loading={isGenerating}>
-          AI Feedback
-        </Button>
-      </Space>
-      {sub.ai_feedback && (
-        <div style={{ marginTop: 12, background: "#f6f8fa", borderRadius: 6, padding: 12 }}>
-          <Text style={{ fontSize: 12 }}>
-            <ThunderboltOutlined style={{ color: "#1677ff" }} /> AI Feedback
-          </Text>
-          <MarkdownRenderer content={sub.ai_feedback} />
-        </div>
       )}
-    </Card>
+    </div>
   );
 }

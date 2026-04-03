@@ -97,6 +97,10 @@ export const assignmentsApi = {
     api.get<Submission[]>(
       `/courses/${courseId}/assignments/${assignmentId}/submissions`
     ),
+  getSubmission: (courseId: string, assignmentId: string, submissionId: string) =>
+    api.get<Submission>(
+      `/courses/${courseId}/assignments/${assignmentId}/submissions/${submissionId}`
+    ),
   submit: (
     courseId: string,
     assignmentId: string,
