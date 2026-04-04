@@ -20,10 +20,10 @@ interface Props {
   minHeight?: number;
 }
 
-const TOOLBAR_HEIGHT = 42;
+const TOOLBAR_HEIGHT = 38;
 
 /**
- * Controlled markdown rich-text input backed by MDXEditor.
+ * Controlled markdown rich-text input backed by Lexical.
  * Drop-in replacement for antd TextArea inside Form.Item — receives
  * `value` / `onChange` automatically from Form context.
  */
@@ -38,9 +38,7 @@ export function MarkdownInput({ value, onChange, placeholder, minHeight = 160 }:
         overflow: "visible",
       }}
     >
-      {/* Target the contentEditable div directly — MDXEditor doesn't
-          forward minHeight to its inner DOM so we inject it here. */}
-      <style>{`.mdxeditor-content { min-height: ${contentMinHeight}px !important; }`}</style>
+      <style>{`.lexical-content-editable { min-height: ${contentMinHeight}px !important; }`}</style>
       <MarkdownInputInner value={value} onChange={onChange} placeholder={placeholder} />
     </div>
   );

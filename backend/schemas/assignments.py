@@ -52,7 +52,7 @@ class AssignmentCreate(BaseModel):
     description: str | None = None
     assignment_type: AssignmentType
     topic: str | None = None
-    due_date: datetime | None = None
+    due_date: datetime
     max_score: float | None = None
     chapter_id: uuid.UUID | None = None
     content: AssignmentContent | None = None

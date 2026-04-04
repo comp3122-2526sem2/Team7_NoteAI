@@ -7,13 +7,11 @@ from pydantic import BaseModel, ConfigDict
 class ChapterCreate(BaseModel):
     title: str
     description: Optional[str] = None
-    order: int = 0
 
 
 class ChapterUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    order: Optional[int] = None
 
 
 class ChapterOut(BaseModel):
@@ -23,7 +21,6 @@ class ChapterOut(BaseModel):
     course_id: uuid.UUID
     title: str
     description: Optional[str]
-    order: int
     workspace_slug: Optional[str]
     created_at: datetime
     updated_at: datetime
@@ -51,6 +48,16 @@ class ChapterSubmissionSummary(BaseModel):
 class ChapterStudentPerformance(BaseModel):
     student_id: uuid.UUID
     student_name: str
+    has_ai_comment: bool
+    ai_comment: Optional[str] = None
+    ai_comment_updated_at: Optional[datetime] = None
+    submissions: list[ChapterSubmissionSummary] = []
+
+
+class StudentChapterPerformance(BaseModel):
+    """Performance for one student across a single chapter (used in the per-student view)."""
+    chapter_id: uuid.UUID
+    chapter_title: str
     has_ai_comment: bool
     ai_comment: Optional[str] = None
     ai_comment_updated_at: Optional[datetime] = None

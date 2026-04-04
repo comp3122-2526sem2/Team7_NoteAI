@@ -40,11 +40,8 @@ DEFAULT_ASSIGNMENT_FEEDBACK_PROMPT = (
 DEFAULT_SYLLABUS_GENERATION_PROMPT = (
     "Course: {course_name}\n"
     "Description: {course_description}\n\n"
-    "The following content was extracted from an uploaded file:\n"
-    "---\n"
-    "{file_content}\n"
-    "---\n\n"
-    "Using the file content above as the source material, generate a comprehensive, "
+    "The attached file is the source material uploaded by the teacher. "
+    "Using it as the primary reference, generate a comprehensive, "
     "well-structured course syllabus in markdown format. Include: an overview, "
     "learning objectives, weekly/chapter breakdown with topics, recommended readings "
     "or resources (if inferable), and assessment methods."

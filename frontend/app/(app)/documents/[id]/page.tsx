@@ -36,7 +36,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
   if (!doc) return <div>Document not found.</div>;
 
   return (
-    <div style={{ maxWidth: 900 }}>
+    <div  >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
           <Title level={3} style={{ margin: 0, wordBreak: "break-all" }}>{doc.original_filename}</Title>

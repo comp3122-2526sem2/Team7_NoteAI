@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { SyllabusGenerationBanner } from "@/components/shared/syllabus-generation-banner";
 import { useAuthStore } from "@/lib/auth-store";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -30,6 +31,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <main style={{ flex: 1, padding: 24, overflowY: "auto" }}>
           {children}
         </main>
+        <SyllabusGenerationBanner />
       </div>
     </div>
   );

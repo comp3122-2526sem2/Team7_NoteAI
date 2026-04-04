@@ -1,19 +1,22 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { use, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { App, Button, Card, Col, Modal, Row, Spin, Typography, Upload } from "antd";
 import {
   SettingOutlined,
   BookOutlined,
   LineChartOutlined,
+  TeamOutlined,
   ThunderboltOutlined,
   InboxOutlined,
   LoadingOutlined,
 } from "@ant-design/icons";
-import { coursesApi, documentsApi } from "@/lib/api";
+import { coursesApi } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { useSyllabusJob } from "@/hooks/useSyllabusJob";
+import { validateSyllabusFile } from "@/lib/validate-syllabus-file";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 
@@ -24,43 +27,28 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
   const { id } = use(params);
   const { isTeacher } = useAuth();
   const { message } = App.useApp();
-  const qc = useQueryClient();
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [generatingDocId, setGeneratingDocId] = useState<string | null>(null);
+  const { job, startJob } = useSyllabusJob();
 
   const { data: course, isLoading } = useQuery({
     queryKey: ["course", id],
     queryFn: () => coursesApi.get(id).then((r) => r.data),
   });
 
-  // Poll the document until generation completes or fails
-  const { data: genDoc } = useQuery({
-    queryKey: ["syllabus-job", generatingDocId],
-    queryFn: () => documentsApi.get(generatingDocId!).then((r) => r.data),
-    enabled: !!generatingDocId,
-    refetchInterval: (query) =>
-      query.state.data?.conversion_status === "pending" ? 3000 : false,
-  });
-
-  useEffect(() => {
-    if (!genDoc) return;
-    if (genDoc.conversion_status === "completed") {
-      qc.invalidateQueries({ queryKey: ["course", id] });
-      setGeneratingDocId(null);
-      setUploadModalOpen(false);
-      message.success("Syllabus generated!");
-    } else if (genDoc.conversion_status === "failed") {
-      setGeneratingDocId(null);
-      message.error("Syllabus generation failed. Please try again.");
-    }
-  }, [genDoc, qc, id, message]);
+  const isGenerating = job?.courseId === id;
 
   const handleSyllabusUpload = async (file: File) => {
+    const validationError = await validateSyllabusFile(file);
+    if (validationError) {
+      message.error(validationError);
+      return;
+    }
     setUploading(true);
     try {
       const { data } = await coursesApi.uploadSyllabus(id, file);
-      setGeneratingDocId(data.document_id);
+      startJob(id, data.document_id);
+      setUploadModalOpen(false);
       message.info("File uploaded — generating syllabus in the background…");
     } catch {
       message.error("Failed to upload file.");
@@ -72,8 +60,6 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
   if (isLoading) return <LoadingSpinner />;
   if (!course) return <div>Course not found.</div>;
 
-  const isGenerating = !!generatingDocId;
-
   const navItems = [
     {
       key: "chapters",
@@ -83,6 +69,12 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
     },
     ...(isTeacher
       ? [
+          {
+            key: "students",
+            label: "Students",
+            icon: <TeamOutlined style={{ fontSize: 28, color: "#1677ff" }} />,
+            href: `/courses/${id}/students`,
+          },
           {
             key: "progress",
             label: "Student Progress",
@@ -98,19 +90,6 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
         ]
       : []),
   ];
-
-  const syllabusExtra = isTeacher ? (
-    isGenerating ? (
-      <span style={{ display: "flex", alignItems: "center", gap: 6, color: "#1677ff" }}>
-        <Spin indicator={<LoadingOutlined spin />} size="small" />
-        <Text style={{ color: "#1677ff", fontSize: 13 }}>Generating…</Text>
-      </span>
-    ) : (
-      <Button size="small" icon={<ThunderboltOutlined />} onClick={() => setUploadModalOpen(true)}>
-        Generate from File
-      </Button>
-    )
-  ) : null;
 
   return (
     <div>
@@ -129,7 +108,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
       <Card
         style={{ marginBottom: 24 }}
         title={<Title level={5} style={{ margin: 0 }}>Syllabus</Title>}
-        extra={syllabusExtra}
+        extra={null}
       >
         {isGenerating ? (
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", color: "#8c8c8c" }}>
@@ -175,7 +154,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
           </span>
         }
         open={uploadModalOpen}
-        onCancel={() => !uploading && !isGenerating && setUploadModalOpen(false)}
+        onCancel={() => !uploading && setUploadModalOpen(false)}
         footer={null}
         destroyOnHidden
       >

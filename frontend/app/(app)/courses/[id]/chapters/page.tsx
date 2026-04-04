@@ -4,7 +4,7 @@ import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
-  App, Button, Card, Col, Empty, Form, Input, InputNumber,
+  App, Button, Card, Col, Empty, Form, Input,
   Modal, Row, Typography,
 } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined, OrderedListOutlined } from "@ant-design/icons";
@@ -23,7 +23,7 @@ export default function ChaptersPage({ params }: { params: Promise<{ id: string 
   const qc = useQueryClient();
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [editChapter, setEditChapter] = useState<{ id: string; title: string; description?: string; order: number } | null>(null);
+  const [editChapter, setEditChapter] = useState<{ id: string; title: string; description?: string } | null>(null);
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
 
@@ -33,7 +33,7 @@ export default function ChaptersPage({ params }: { params: Promise<{ id: string 
   });
 
   const createMutation = useMutation({
-    mutationFn: (values: { title: string; description?: string; order?: number }) =>
+    mutationFn: (values: { title: string; description?: string }) =>
       chaptersApi.create(courseId, values),
     onSuccess: () => {
       message.success("Chapter created");
@@ -45,7 +45,7 @@ export default function ChaptersPage({ params }: { params: Promise<{ id: string 
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: { title?: string; description?: string; order?: number } }) =>
+    mutationFn: ({ id, values }: { id: string; values: { title?: string; description?: string } }) =>
       chaptersApi.update(courseId, id, values),
     onSuccess: () => {
       message.success("Chapter updated");
@@ -104,7 +104,6 @@ export default function ChaptersPage({ params }: { params: Promise<{ id: string 
                             editForm.setFieldsValue({
                               title: chapter.title,
                               description: chapter.description,
-                              order: chapter.order,
                             });
                           }}
                         >
@@ -169,9 +168,6 @@ export default function ChaptersPage({ params }: { params: Promise<{ id: string 
           <Form.Item name="description" label="Description">
             <MarkdownInput placeholder="Brief chapter description…" minHeight={100} />
           </Form.Item>
-          <Form.Item name="order" label="Order" initialValue={chapters?.length ?? 0}>
-            <InputNumber min={0} style={{ width: "100%" }} />
-          </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" block loading={createMutation.isPending}>
               Create
@@ -199,9 +195,6 @@ export default function ChaptersPage({ params }: { params: Promise<{ id: string 
           </Form.Item>
           <Form.Item name="description" label="Description">
             <MarkdownInput placeholder="Brief chapter description…" minHeight={100} />
-          </Form.Item>
-          <Form.Item name="order" label="Order">
-            <InputNumber min={0} style={{ width: "100%" }} />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" block loading={updateMutation.isPending}>

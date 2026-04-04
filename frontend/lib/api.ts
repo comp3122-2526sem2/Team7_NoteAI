@@ -146,6 +146,8 @@ export const chaptersApi = {
     api.get<ChapterAIComment | null>(`/courses/${courseId}/chapters/${chapterId}/ai-comment`),
   generateAIComment: (courseId: string, chapterId: string) =>
     api.post<ChapterAIComment>(`/courses/${courseId}/chapters/${chapterId}/ai-comment/generate`),
+  generateAICommentForStudent: (courseId: string, chapterId: string, studentId: string) =>
+    api.post<ChapterAIComment>(`/courses/${courseId}/chapters/${chapterId}/students/${studentId}/ai-comment/generate`),
   aiCommentStreamUrl: (courseId: string, chapterId: string) =>
     `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/courses/${courseId}/chapters/${chapterId}/ai-comment/stream`,
   listDocuments: (courseId: string, chapterId: string) =>
@@ -160,6 +162,8 @@ export const chaptersApi = {
     api.delete(`/courses/${courseId}/chapters/${chapterId}/documents/${docId}`),
   getChapterPerformance: (courseId: string, chapterId: string) =>
     api.get<ChapterStudentPerformance[]>(`/courses/${courseId}/chapters/${chapterId}/performance`),
+  getStudentChapterPerformance: (courseId: string, studentId: string) =>
+    api.get<StudentChapterPerformance[]>(`/courses/${courseId}/chapters/students/${studentId}/performance`),
   listThreads: (courseId: string, chapterId: string) =>
     api.get<ChapterThread[]>(`/courses/${courseId}/chapters/${chapterId}/threads`),
   createThread: (courseId: string, chapterId: string, name: string) =>
@@ -244,7 +248,6 @@ export interface Chapter {
   course_id: string;
   title: string;
   description?: string;
-  order: number;
   created_at: string;
   updated_at: string;
 }
@@ -252,7 +255,6 @@ export interface Chapter {
 export interface ChapterCreateData {
   title: string;
   description?: string;
-  order?: number;
 }
 
 export interface ChapterAIComment {
@@ -275,6 +277,15 @@ export interface ChapterSubmissionSummary {
 export interface ChapterStudentPerformance {
   student_id: string;
   student_name: string;
+  has_ai_comment: boolean;
+  ai_comment?: string;
+  ai_comment_updated_at?: string;
+  submissions: ChapterSubmissionSummary[];
+}
+
+export interface StudentChapterPerformance {
+  chapter_id: string;
+  chapter_title: string;
   has_ai_comment: boolean;
   ai_comment?: string;
   ai_comment_updated_at?: string;
@@ -329,7 +340,7 @@ export interface AssignmentCreateData {
   description?: string;
   assignment_type: "quiz" | "homework" | "project" | "exam";
   topic?: string;
-  due_date?: string;
+  due_date: string;
   max_score?: number;
   chapter_id?: string;
   content?: AssignmentContent;

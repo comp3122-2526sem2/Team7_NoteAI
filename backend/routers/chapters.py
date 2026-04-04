@@ -20,7 +20,7 @@ from models.prompt import ChapterPerformancePrompt, DEFAULT_CHAPTER_PERFORMANCE_
 from models.chapter_thread import ChapterThread
 from models.document import ConversionStatus, DocumentType
 from models.user import StudentUser
-from schemas import ChapterCreate, ChapterOut, ChapterUpdate, ChapterAICommentOut, ChapterStudentPerformance, ThreadCreate, ThreadOut
+from schemas import ChapterCreate, ChapterOut, ChapterUpdate, ChapterAICommentOut, ChapterStudentPerformance, StudentChapterPerformance, ThreadCreate, ThreadOut
 from schemas.documents import DocumentOut
 
 router = APIRouter(prefix="/courses/{course_id}/chapters", tags=["Chapters"])
@@ -162,7 +162,7 @@ def list_chapters(course_id: uuid.UUID, _: CurrentUser, db: DbDep):
     return db.scalars(
         select(Chapter)
         .where(Chapter.course_id == course_id)
-        .order_by(Chapter.order, Chapter.created_at)
+        .order_by(Chapter.created_at)
     ).all()
 
 
@@ -500,6 +500,98 @@ def _build_chapter_prompt(
 
 # ── Chapter Performance (teacher view) ─────────────────────────────────────────
 
+@router.get("/students/{student_id}/performance", response_model=list[StudentChapterPerformance])
+def get_student_chapter_performance(
+    course_id: uuid.UUID,
+    student_id: uuid.UUID,
+    _: TeacherUser,
+    db: DbDep,
+):
+    """
+    Return one performance record per chapter for a specific student.
+    Includes AI comment status and a submission summary per assignment.
+    """
+    from schemas.chapters import ChapterSubmissionSummary as _Sub
+
+    _get_course_or_404(course_id, db)
+    student = db.get(StudentUser, student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found.")
+
+    chapters = db.scalars(
+        select(Chapter)
+        .where(Chapter.course_id == course_id)
+        .order_by(Chapter.created_at)
+    ).all()
+
+    if not chapters:
+        return []
+
+    chapter_ids = [c.id for c in chapters]
+
+    # AI comments for this student across all chapters
+    comments = db.scalars(
+        select(ChapterAIComment).where(
+            ChapterAIComment.student_id == student_id,
+            ChapterAIComment.chapter_id.in_(chapter_ids),
+        )
+    ).all()
+    comment_map = {c.chapter_id: c for c in comments}
+
+    # All assignments across all chapters in this course
+    assignments = db.scalars(
+        select(Assignment).where(
+            Assignment.course_id == course_id,
+            Assignment.chapter_id.in_(chapter_ids),
+        ).order_by(Assignment.created_at)
+    ).all()
+
+    # All submissions by this student for those assignments
+    if assignments:
+        submissions = db.scalars(
+            select(AssignmentSubmission).where(
+                AssignmentSubmission.student_id == student_id,
+                AssignmentSubmission.assignment_id.in_([a.id for a in assignments]),
+            )
+        ).all()
+    else:
+        submissions = []
+
+    sub_map = {s.assignment_id: s for s in submissions}
+
+    # Group assignments by chapter
+    from collections import defaultdict
+    assignments_by_chapter: dict[uuid.UUID, list[Assignment]] = defaultdict(list)
+    for a in assignments:
+        if a.chapter_id:
+            assignments_by_chapter[a.chapter_id].append(a)
+
+    result = []
+    for chapter in chapters:
+        comment = comment_map.get(chapter.id)
+        chapter_assignments = assignments_by_chapter.get(chapter.id, [])
+        summaries = [
+            _Sub(
+                assignment_id=a.id,
+                assignment_name=a.name,
+                status=sub_map[a.id].submission_status.value if a.id in sub_map else "pending",
+                score=sub_map[a.id].score if a.id in sub_map else None,
+                max_score=a.max_score,
+            )
+            for a in chapter_assignments
+        ]
+        result.append(StudentChapterPerformance(
+            chapter_id=chapter.id,
+            chapter_title=chapter.title,
+            has_ai_comment=comment is not None,
+            ai_comment=comment.comment if comment else None,
+            ai_comment_updated_at=comment.updated_at if comment else None,
+            submissions=summaries,
+        ))
+
+    return result
+
+
 @router.get("/{chapter_id}/performance", response_model=list[ChapterStudentPerformance])
 def get_chapter_performance(
     course_id: uuid.UUID,
@@ -579,6 +671,51 @@ def get_chapter_performance(
 
 
 # ── Chapter AI Comments ────────────────────────────────────────────────────────
+
+@router.post("/{chapter_id}/students/{student_id}/ai-comment/generate", response_model=ChapterAICommentOut)
+async def generate_ai_comment_for_student(
+    course_id: uuid.UUID,
+    chapter_id: uuid.UUID,
+    student_id: uuid.UUID,
+    _: TeacherUser,
+    db: DbDep,
+):
+    """Teachers only. Generate or refresh the AI study comment for a specific student on this chapter."""
+    chapter = _get_chapter_or_404(chapter_id, course_id, db)
+    student = db.get(StudentUser, student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found.")
+    student_name = student.user.nickname if student else "the student"
+
+    prompt = _build_chapter_prompt(chapter, student_name, student_id, db)
+    generated = await chat_complete(
+        prompt,
+        system="You are a helpful educational assistant. Always respond in markdown.",
+        temperature=0.7,
+    )
+
+    existing = db.scalar(
+        select(ChapterAIComment).where(
+            ChapterAIComment.chapter_id == chapter_id,
+            ChapterAIComment.student_id == student_id,
+        )
+    )
+    if existing:
+        existing.comment = generated
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    record = ChapterAIComment(
+        chapter_id=chapter_id,
+        student_id=student_id,
+        comment=generated,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
 
 @router.get("/{chapter_id}/ai-comment", response_model=ChapterAICommentOut | None)
 def get_ai_comment(

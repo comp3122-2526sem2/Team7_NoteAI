@@ -1,3 +1,4 @@
+import base64
 import io
 import logging
 import os
@@ -16,7 +17,6 @@ from models import (
     DEFAULT_SYLLABUS_GENERATION_PROMPT,
 )
 from models.document import ConversionStatus, DocumentType
-from openai_client import chat_complete
 from schemas import (
     AssignTeacherRequest,
     CourseCreate,
@@ -41,26 +41,6 @@ SYLLABUS_ALLOWED_TYPES: dict[str, str] = {
 }
 
 
-def _extract_text(file_bytes: bytes, content_type: str) -> str:
-    """Extract plain text from an uploaded file based on its MIME type."""
-    if content_type in ("text/plain", "text/markdown"):
-        return file_bytes.decode("utf-8", errors="replace")
-
-    if content_type == "application/pdf":
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(file_bytes))
-        pages = [page.extract_text() or "" for page in reader.pages]
-        return "\n".join(pages)
-
-    if content_type in (
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/msword",
-    ):
-        from docx import Document as DocxDocument
-        doc = DocxDocument(io.BytesIO(file_bytes))
-        return "\n".join(para.text for para in doc.paragraphs)
-
-    raise ValueError(f"Cannot extract text from '{content_type}'")
 
 router = APIRouter(prefix="/courses", tags=["Courses"])
 
@@ -215,70 +195,89 @@ def remove_teacher(course_id: uuid.UUID, teacher_id: uuid.UUID, _: AdminUser, db
     db.commit()
 
 
+# ── Syllabus validation ────────────────────────────────────────────────────────
+
+_MAX_FILE_SIZE_MB = 20
+_MAX_PDF_PAGES = 50
+
+
+def _validate_syllabus_file(file_bytes: bytes, content_type: str) -> None:
+    """
+    Raise HTTPException(400) if the file would be rejected by the LLM.
+
+    Checks:
+      • File size ≤ 20 MB  (all types)
+      • PDF page count ≤ 50  (API limit: one image per page, max 50 images)
+    """
+    size_mb = len(file_bytes) / (1024 * 1024)
+    if size_mb > _MAX_FILE_SIZE_MB:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"File is too large ({size_mb:.1f} MB). "
+                f"Maximum allowed size is {_MAX_FILE_SIZE_MB} MB."
+            ),
+        )
+
+    if content_type == "application/pdf":
+        try:
+            from pypdf import PdfReader
+            page_count = len(PdfReader(io.BytesIO(file_bytes)).pages)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"Could not read PDF: {exc}")
+
+        if page_count > _MAX_PDF_PAGES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"PDF has {page_count} pages. "
+                    f"Maximum allowed is {_MAX_PDF_PAGES} pages. "
+                    f"Please split the document or reduce it to {_MAX_PDF_PAGES} pages or fewer."
+                ),
+            )
+
+
 # ── Syllabus helpers ───────────────────────────────────────────────────────────
 
-# GitHub Models free tier caps input at ~8 000 tokens per request.
-# Budget breakdown (chars ≈ tokens × 4):
-#   prompt template overhead  ~  1 600 chars (400 tokens)
-#   system message            ~    200 chars ( 50 tokens)
-#   expected syllabus output  ~ 10 000 chars (2 500 tokens)
-#   → safe budget for {file_content}: 10 000 chars (2 500 tokens)
-#
-# Chunk size is kept small so each individual summarisation call also stays
-# safely within the same 8 000-token window.
-
-_MAX_CONTENT_CHARS = 10_000   # hard ceiling for {file_content} in the final prompt
-_CHUNK_SIZE = 3_500           # chars per chunk (~875 tokens)
-_SUMMARY_MAX_TOKENS = 120     # cap each chunk summary to ~120 tokens (~480 chars)
-
-
-async def _summarise_chunks(text: str) -> str:
-    """Summarise text in fixed-size chunks and return the joined summaries."""
-    chunks = [text[i: i + _CHUNK_SIZE] for i in range(0, len(text), _CHUNK_SIZE)]
-    total = len(chunks)
-    summaries: list[str] = []
-
-    for idx, chunk in enumerate(chunks, start=1):
-        summary = await chat_complete(
-            (
-                f"Briefly summarise part {idx}/{total} of a course document. "
-                f"Keep only key topics, objectives, schedule items, and "
-                f"assessment details. Be concise.\n\n{chunk}"
-            ),
-            system="You are a concise academic content summariser.",
-            temperature=0.3,
-            max_tokens=_SUMMARY_MAX_TOKENS,
-        )
-        summaries.append(summary.strip())
-
-    return "\n\n".join(summaries)
-
-
-async def _condense_for_prompt(text: str) -> str:
+async def _call_llm_with_file(
+    file_bytes: bytes,
+    content_type: str,
+    filename: str,
+    prompt: str,
+    system: str,
+    temperature: float = 0.4,
+) -> str:
     """
-    Map-reduce condensation for large documents.
+    Call the LLM with the file attached directly — no chunking or summarisation.
 
-    Pass 1 – if the raw text exceeds the safe budget, split into chunks and
-             summarise each one individually (bounded by _SUMMARY_MAX_TOKENS).
-    Pass 2 – if the combined summaries are still too long (unlikely but
-             possible with very large documents), run a second reduction pass.
-    Final  – hard-truncate to _MAX_CONTENT_CHARS as a safety net.
+    All file types are base64-encoded and sent as an inline file attachment
+    so the model reads the full document in one shot.
     """
-    if len(text) <= _MAX_CONTENT_CHARS:
-        return text
+    from openai_client import get_client as _get_client, get_model as _get_model
 
-    # Pass 1: summarise every chunk
-    condensed = await _summarise_chunks(text)
+    client = _get_client()
 
-    # Pass 2: if still too large, summarise the summaries
-    if len(condensed) > _MAX_CONTENT_CHARS:
-        condensed = await _summarise_chunks(condensed)
+    b64 = base64.b64encode(file_bytes).decode("utf-8")
+    user_content: object = [
+        {
+            "type": "file",
+            "file": {
+                "filename": filename,
+                "file_data": f"data:{content_type};base64,{b64}",
+            },
+        },
+        {"type": "text", "text": prompt},
+    ]
 
-    # Final safety net: hard truncate
-    if len(condensed) > _MAX_CONTENT_CHARS:
-        condensed = condensed[:_MAX_CONTENT_CHARS] + "\n\n[Content truncated for length]"
-
-    return condensed
+    resp = await client.chat.completions.create(
+        model=_get_model(),
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=temperature,
+    )
+    return resp.choices[0].message.content or ""
 
 
 # ── Syllabus background task ───────────────────────────────────────────────────
@@ -286,28 +285,34 @@ async def _condense_for_prompt(text: str) -> str:
 async def _generate_syllabus_bg(
     course_id: uuid.UUID,
     doc_id: uuid.UUID,
-    extracted_text: str,
+    file_bytes: bytes,
+    content_type: str,
+    filename: str,
     course_name: str,
     course_description: str,
     prompt_template: str,
 ) -> None:
     """
-    Background task: condense extracted text → call AI → persist results.
+    Background task: attach the uploaded file to the LLM → persist results.
 
     Opens its own DB session because the request session is closed by the
     time this runs.  On any failure the Document is marked as failed.
     """
     db = SessionLocal()
     try:
-        file_content = await _condense_for_prompt(extracted_text)
-
+        # Build the text part of the prompt (file is passed separately as attachment)
         prompt = prompt_template.format(
             course_name=course_name,
             course_description=course_description,
-            file_content=file_content,
-        )
-        syllabus_md = await chat_complete(
-            prompt,
+            # Legacy placeholder — silently ignored if absent in newer templates
+            file_content="",
+        ).strip()
+
+        syllabus_md = await _call_llm_with_file(
+            file_bytes=file_bytes,
+            content_type=content_type,
+            filename=filename,
+            prompt=prompt,
             system="You are an expert curriculum designer. Always respond in markdown.",
             temperature=0.4,
         )
@@ -381,20 +386,12 @@ async def upload_syllabus_file(
         )
 
     file_bytes = await file.read()
+    _validate_syllabus_file(file_bytes, file.content_type)
+
     ext = SYLLABUS_ALLOWED_TYPES[file.content_type]
     saved_name = f"{uuid.uuid4()}.{ext}"
     save_path = UPLOAD_DIR / saved_name
     save_path.write_bytes(file_bytes)
-
-    try:
-        extracted_text = _extract_text(file_bytes, file.content_type)
-    except Exception as exc:
-        save_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail=f"Could not extract text from file: {exc}")
-
-    if not extracted_text.strip():
-        save_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail="No readable text found in the uploaded file.")
 
     prompt_row = db.scalar(select(SyllabusGenerationPrompt))
     prompt_template = prompt_row.prompt if prompt_row else DEFAULT_SYLLABUS_GENERATION_PROMPT
@@ -406,7 +403,6 @@ async def upload_syllabus_file(
         original_filename=file.filename,
         original_file_type=ext,
         original_file_path=str(save_path),
-        converted_markdown=extracted_text,
         conversion_status=ConversionStatus.pending,
     )
     db.add(doc)
@@ -417,7 +413,9 @@ async def upload_syllabus_file(
         _generate_syllabus_bg,
         course_id=course_id,
         doc_id=doc.id,
-        extracted_text=extracted_text,
+        file_bytes=file_bytes,
+        content_type=file.content_type,
+        filename=file.filename or saved_name,
         course_name=course.name,
         course_description=course.description or "N/A",
         prompt_template=prompt_template,

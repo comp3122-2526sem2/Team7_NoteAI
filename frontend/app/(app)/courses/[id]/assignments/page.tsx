@@ -42,11 +42,11 @@ export default function AssignmentsPage({ params }: { params: Promise<{ id: stri
   const chapterMap = Object.fromEntries((chapters ?? []).map((c) => [c.id, c]));
 
   const createMutation = useMutation({
-    mutationFn: (values: AssignmentCreateData & { due_date_picker?: dayjs.Dayjs }) => {
+    mutationFn: (values: Omit<AssignmentCreateData, "due_date"> & { due_date_picker: dayjs.Dayjs }) => {
       const { due_date_picker, ...rest } = values;
       return assignmentsApi.create(courseId, {
         ...rest,
-        due_date: due_date_picker?.toISOString(),
+        due_date: due_date_picker.toISOString(),
       });
     },
     onSuccess: () => {
@@ -167,11 +167,18 @@ export default function AssignmentsPage({ params }: { params: Promise<{ id: stri
               <InputNumber min={0} style={{ width: 120 }} />
             </Form.Item>
           </Space>
+          <Form.Item name="chapter_id" label="Chapter" rules={[{ required: true, message: "Please select a chapter" }]}>
+            <Select
+              placeholder="Select a chapter"
+              options={(chapters ?? []).map((c) => ({ value: c.id, label: c.title }))}
+              notFoundContent="No chapters available — create a chapter first."
+            />
+          </Form.Item>
           <Space style={{ width: "100%" }} align="start">
             <Form.Item name="topic" label="Topic">
               <Input style={{ width: 160 }} />
             </Form.Item>
-            <Form.Item name="due_date_picker" label="Due Date">
+            <Form.Item name="due_date_picker" label="Due Date" rules={[{ required: true, message: "Please select a due date" }]}>
               <DatePicker style={{ width: 160 }} />
             </Form.Item>
           </Space>
