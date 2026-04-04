@@ -417,11 +417,11 @@ export default function ChapterDetailPage({
   }, [courseId, chapterId, token, refetchAIComment]);
 
   const createMutation = useMutation({
-    mutationFn: (values: { name: string; description?: string; assignment_type: "quiz" | "homework" | "project" | "exam"; topic?: string; due_date_picker?: dayjs.Dayjs; max_score?: number }) => {
+    mutationFn: (values: { name: string; description?: string; assignment_type: "quiz" | "homework" | "project" | "exam"; topic?: string; due_date_picker: dayjs.Dayjs; max_score?: number }) => {
       const { due_date_picker, ...rest } = values;
       return assignmentsApi.create(courseId, {
         ...rest,
-        due_date: due_date_picker?.toISOString(),
+        due_date: due_date_picker.toISOString(),
         chapter_id: chapterId,
         content: sections.length > 0 ? toContent(sections) : undefined,
       });
@@ -740,7 +740,7 @@ export default function ChapterDetailPage({
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="due_date_picker" label="Due Date">
+              <Form.Item name="due_date_picker" label="Due Date" rules={[{ required: true, message: "Due date is required" }]}>
                 <DatePicker style={{ width: "100%" }} />
               </Form.Item>
             </Col>

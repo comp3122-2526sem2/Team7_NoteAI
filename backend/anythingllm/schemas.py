@@ -70,6 +70,12 @@ class VectorSearchResponse(_Base):
 
 # ── Workspace ──────────────────────────────────────────────────────────────────
 
+class WorkspaceDocument(_Base):
+    id: int | None = None
+    docpath: str = ""
+    filename: str | None = None
+
+
 class WorkspaceInfo(_Base):
     id: int | None = None
     name: str
@@ -79,6 +85,7 @@ class WorkspaceInfo(_Base):
     openAiHistory: int | None = None
     openAiPrompt: str | None = None
     topN: int | None = None
+    documents: list[WorkspaceDocument] = []
 
 
 # ── Documents ─────────────────────────────────────────────────────────────────
@@ -94,6 +101,7 @@ class UploadedDocument(_Base):
     published: str | None = None
     wordCount: int | None = None
     token_count_estimate: int | None = None
+    pageContent: str | None = None
 
 
 class DocumentUploadResponse(_Base):

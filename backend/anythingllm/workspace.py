@@ -22,6 +22,7 @@ from .schemas import (
     ChatSource,
     ThreadInfo,
     VectorSearchResponse,
+    WorkspaceDocument,
     WorkspaceInfo,
 )
 
@@ -257,6 +258,20 @@ class WorkspaceAPI:
         payload = {"adds": [], "deletes": doc_paths}
         resp = await self._http.post(f"/v1/workspace/{slug}/update-embeddings", json=payload)
         _raise_for_status(resp)
+
+    async def list_documents(self, slug: str) -> list[WorkspaceDocument]:
+        """
+        Return the list of documents currently embedded in a workspace.
+
+        Useful for verifying that a document was successfully embedded after
+        calling add_documents().
+        """
+        resp = await self._http.get(f"/v1/workspace/{slug}")
+        _raise_for_status(resp)
+        data = resp.json()
+        workspaces = data.get("workspace", [data])
+        ws = workspaces[0] if isinstance(workspaces, list) else workspaces
+        return WorkspaceInfo.model_validate(ws).documents
 
     # ── Threads ───────────────────────────────────────────────────────────────
 

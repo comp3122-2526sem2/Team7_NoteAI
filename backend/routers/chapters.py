@@ -1,7 +1,11 @@
+import asyncio
 import json
+import logging
 import os
 import uuid
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, status
 from pydantic import BaseModel
@@ -241,6 +245,57 @@ def list_chapter_documents(
     ).all()
 
 
+async def _embed_with_verification(
+    client,
+    slug: str,
+    location: str,
+    *,
+    retries: int = 2,
+    verify_delay: float = 2.0,
+) -> bool:
+    """
+    Embed a document into a workspace and verify it was actually indexed.
+
+    Calls add_documents(), waits briefly, then checks the workspace's document
+    list. If the location is missing it retries up to `retries` times before
+    giving up. Returns True on confirmed success, False on failure.
+    """
+    for attempt in range(1, retries + 1):
+        try:
+            await client.workspace.add_documents(slug, [location])
+        except AnythingLLMError as exc:
+            logger.warning("Embedding attempt %d/%d failed for slug=%s: %s", attempt, retries, slug, exc)
+            if attempt == retries:
+                return False
+            await asyncio.sleep(verify_delay * attempt)
+            continue
+
+        # Give AnythingLLM a moment to commit the vector index
+        await asyncio.sleep(verify_delay)
+
+        try:
+            embedded_docs = await client.workspace.list_documents(slug)
+            embedded_paths = {d.docpath for d in embedded_docs}
+            # AnythingLLM stores paths with a leading slash or without — normalise both
+            location_tail = location.lstrip("/")
+            if any(location_tail in p or p in location_tail for p in embedded_paths):
+                return True
+        except Exception as exc:
+            logger.warning("Verification check failed for slug=%s: %s", slug, exc)
+            # Treat a verification error as inconclusive on the last attempt
+            if attempt == retries:
+                return False
+
+        logger.warning(
+            "Document not found in workspace after embed (attempt %d/%d): slug=%s location=%s",
+            attempt, retries, slug, location,
+        )
+        if attempt < retries:
+            await asyncio.sleep(verify_delay * attempt)
+
+    return False
+
+
 async def _process_document_upload(
     doc_id: uuid.UUID,
     chapter_id: uuid.UUID,
@@ -249,7 +304,7 @@ async def _process_document_upload(
 ) -> None:
     """
     Background task: upload the file to AnythingLLM, embed it into the teacher
-    workspace, then fan out to all existing student workspaces for this chapter.
+    workspace with verification, then fan out to all existing student workspaces.
     """
     db = SessionLocal()
     try:
@@ -264,34 +319,63 @@ async def _process_document_upload(
             return
 
         client = get_client()
-        result = await client.document.upload_file(file_bytes, original_filename)
 
-        if result.success and result.documents:
-            location = result.documents[0].location
-            doc.anythingllm_location = location
+        # ── 1. Upload file to AnythingLLM (converts PDF/DOCX → text) ──────────
+        folder = f"chapter-{chapter_id}"
+        try:
+            await client.document.create_folder(folder)
+        except Exception:
+            pass  # folder may already exist
 
-            # Add to teacher workspace
-            teacher_slug = await _ensure_teacher_workspace(chapter, db)
-            await client.workspace.add_documents(teacher_slug, [location])
-            doc.conversion_status = ConversionStatus.completed
-            db.commit()
+        result = await client.document.upload_file(file_bytes, original_filename, folder=folder)
 
-            # Fan out to existing student workspaces
-            student_workspaces = db.scalars(
-                select(ChapterUserWorkspace).where(
-                    ChapterUserWorkspace.chapter_id == chapter_id
-                )
-            ).all()
-            for sw in student_workspaces:
-                try:
-                    await client.workspace.add_documents(sw.workspace_slug, [location])
-                except AnythingLLMError:
-                    pass
-        else:
+        if not (result.success and result.documents):
+            logger.error("AnythingLLM upload failed for doc_id=%s: %s", doc_id, result.error)
             doc.conversion_status = ConversionStatus.failed
             db.commit()
+            return
+
+        uploaded_doc = result.documents[0]
+        location = uploaded_doc.location
+        doc.anythingllm_location = location
+
+        # Persist the extracted text for local rendering
+        if uploaded_doc.pageContent:
+            doc.converted_markdown = uploaded_doc.pageContent
+
+        # ── 2. Embed into the teacher workspace (with verification + retry) ────
+        teacher_slug = await _ensure_teacher_workspace(chapter, db)
+        teacher_ok = await _embed_with_verification(client, teacher_slug, location)
+
+        if not teacher_ok:
+            logger.error(
+                "Embedding verification failed for teacher workspace slug=%s doc_id=%s",
+                teacher_slug, doc_id,
+            )
+            doc.conversion_status = ConversionStatus.failed
+            db.commit()
+            return
+
+        doc.conversion_status = ConversionStatus.completed
+        db.commit()
+        logger.info("Document embedded successfully: doc_id=%s slug=%s", doc_id, teacher_slug)
+
+        # ── 3. Best-effort fan-out to existing student workspaces ─────────────
+        student_workspaces = db.scalars(
+            select(ChapterUserWorkspace).where(
+                ChapterUserWorkspace.chapter_id == chapter_id
+            )
+        ).all()
+        for sw in student_workspaces:
+            ok = await _embed_with_verification(client, sw.workspace_slug, location, retries=2)
+            if not ok:
+                logger.warning(
+                    "Could not verify embedding in student workspace slug=%s doc_id=%s",
+                    sw.workspace_slug, doc_id,
+                )
 
     except Exception:
+        logger.exception("Unexpected error in _process_document_upload for doc_id=%s", doc_id)
         try:
             doc = db.get(Document, doc_id)
             if doc:
