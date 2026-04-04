@@ -13,7 +13,7 @@ import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import { MarkdownInput } from "@/components/shared/markdown-input";
-import { AnswersDisplay } from "../page";
+import { AnswersDisplay } from "../../answers-display";
 
 const { Title, Text } = Typography;
 

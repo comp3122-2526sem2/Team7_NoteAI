@@ -84,7 +84,7 @@ function QuestionBuilder({
   onChange: (s: DraftSection[]) => void;
 }) {
   const update = (key: string, patch: Partial<DraftSection>) =>
-    onChange(sections.map((s) => (s._key === key ? { ...s, ...patch } : s)));
+    onChange(sections.map((s) => (s._key === key ? { ...s, ...patch } as DraftSection : s)));
 
   const remove = (key: string) => onChange(sections.filter((s) => s._key !== key));
 
@@ -746,7 +746,7 @@ export default function ChapterDetailPage({
             </Col>
           </Row>
 
-          <Divider orientation="left" style={{ fontSize: 13 }}>Questions</Divider>
+          <Divider titlePlacement="left" style={{ fontSize: 13 }}>Questions</Divider>
           <QuestionBuilder sections={sections} onChange={setSections} />
 
           <Form.Item style={{ marginBottom: 0, marginTop: 16 }}>

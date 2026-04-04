@@ -10,6 +10,7 @@ import type { ColumnsType } from "antd/es/table";
 import { EyeOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { assignmentsApi } from "@/lib/api";
 import type { Assignment, AssignmentContent, MCQuestion, LongQuestion, PassageSection, Submission } from "@/lib/api";
+import { AnswersDisplay } from "./answers-display";
 import { useAuth } from "@/hooks/useAuth";
 import { LoadingSpinner } from "@/components/shared/loading-spinner";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -129,15 +130,6 @@ function QuestionBlock({ num, question, answer, onChange, readOnly, showSuggeste
     </div>
   );
 }
-
-export function AnswersDisplay({ content, answers, showSuggestedAnswer = false }: {
-  content: AssignmentContent;
-  answers: Record<string, string>;
-  showSuggestedAnswer?: boolean;
-}) {
-  return <div>{renderQuestions(content, answers, () => {}, true, showSuggestedAnswer)}</div>;
-}
-
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
