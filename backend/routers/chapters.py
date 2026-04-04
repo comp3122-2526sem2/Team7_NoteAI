@@ -16,7 +16,14 @@ from anythingllm import ChatMode, get_client
 from anythingllm.exceptions import AnythingLLMError
 from database import SessionLocal
 from deps import CurrentUser, DbDep, TeacherUser
-from models import Assignment, AssignmentSubmission, Course, CourseStudent, Document, UserRole
+from models import (
+    Assignment,
+    AssignmentSubmission,
+    Course,
+    CourseStudent,
+    Document,
+    UserRole,
+)
 from openai_client import chat_complete
 from openai_client import get_client as get_openai_client, get_model as get_openai_model
 from models.chapter import Chapter, ChapterAIComment, ChapterUserWorkspace
@@ -24,12 +31,24 @@ from models.prompt import ChapterPerformancePrompt, DEFAULT_CHAPTER_PERFORMANCE_
 from models.chapter_thread import ChapterThread
 from models.document import ConversionStatus, DocumentType
 from models.user import StudentUser
-from schemas import ChapterCreate, ChapterOut, ChapterUpdate, ChapterAICommentOut, ChapterStudentPerformance, StudentChapterPerformance, ThreadCreate, ThreadOut
-from schemas.documents import DocumentOut
+from schemas import (
+    ChapterCreate,
+    ChapterOut,
+    ChapterUpdate,
+    ChapterAICommentOut,
+    ChapterStudentPerformance,
+    StudentChapterPerformance,
+    ThreadCreate,
+    ThreadOut,
+)
+from document_keywords import get_or_compute_keyword_items, hash_converted_text
+from schemas.documents import DocumentKeywordsOut, DocumentOut
 
 router = APIRouter(prefix="/courses/{course_id}/chapters", tags=["Chapters"])
 
-UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(Path(__file__).parent.parent / "uploads")))
+UPLOAD_DIR = Path(
+    os.getenv("UPLOAD_DIR", str(Path(__file__).parent.parent / "uploads"))
+)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_TYPES = {
@@ -42,6 +61,7 @@ ALLOWED_TYPES = {
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _get_course_or_404(course_id: uuid.UUID, db) -> Course:
     course = db.get(Course, course_id)
@@ -160,6 +180,7 @@ def _lookup_workspace_slug(chapter: Chapter, current_user, db) -> str:
 
 # ── Chapters ──────────────────────────────────────────────────────────────────
 
+
 @router.get("", response_model=list[ChapterOut])
 def list_chapters(course_id: uuid.UUID, _: CurrentUser, db: DbDep):
     _get_course_or_404(course_id, db)
@@ -171,7 +192,9 @@ def list_chapters(course_id: uuid.UUID, _: CurrentUser, db: DbDep):
 
 
 @router.post("", response_model=ChapterOut, status_code=status.HTTP_201_CREATED)
-async def create_chapter(course_id: uuid.UUID, body: ChapterCreate, _: TeacherUser, db: DbDep):
+async def create_chapter(
+    course_id: uuid.UUID, body: ChapterCreate, _: TeacherUser, db: DbDep
+):
     _get_course_or_404(course_id, db)
     chapter = Chapter(course_id=course_id, **body.model_dump())
     db.add(chapter)
@@ -197,7 +220,11 @@ def get_chapter(course_id: uuid.UUID, chapter_id: uuid.UUID, _: CurrentUser, db:
 
 @router.put("/{chapter_id}", response_model=ChapterOut)
 def update_chapter(
-    course_id: uuid.UUID, chapter_id: uuid.UUID, body: ChapterUpdate, _: TeacherUser, db: DbDep
+    course_id: uuid.UUID,
+    chapter_id: uuid.UUID,
+    body: ChapterUpdate,
+    _: TeacherUser,
+    db: DbDep,
 ):
     chapter = _get_chapter_or_404(chapter_id, course_id, db)
     for field, value in body.model_dump(exclude_none=True).items():
@@ -208,7 +235,9 @@ def update_chapter(
 
 
 @router.delete("/{chapter_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_chapter(course_id: uuid.UUID, chapter_id: uuid.UUID, _: TeacherUser, db: DbDep):
+async def delete_chapter(
+    course_id: uuid.UUID, chapter_id: uuid.UUID, _: TeacherUser, db: DbDep
+):
     chapter = _get_chapter_or_404(chapter_id, course_id, db)
     teacher_slug = chapter.workspace_slug
 
@@ -216,7 +245,9 @@ async def delete_chapter(course_id: uuid.UUID, chapter_id: uuid.UUID, _: Teacher
     student_slugs = [
         uw.workspace_slug
         for uw in db.scalars(
-            select(ChapterUserWorkspace).where(ChapterUserWorkspace.chapter_id == chapter_id)
+            select(ChapterUserWorkspace).where(
+                ChapterUserWorkspace.chapter_id == chapter_id
+            )
         ).all()
     ]
 
@@ -233,6 +264,7 @@ async def delete_chapter(course_id: uuid.UUID, chapter_id: uuid.UUID, _: Teacher
 
 # ── Chapter Documents ──────────────────────────────────────────────────────────
 
+
 @router.get("/{chapter_id}/documents", response_model=list[DocumentOut])
 def list_chapter_documents(
     course_id: uuid.UUID, chapter_id: uuid.UUID, _: CurrentUser, db: DbDep
@@ -243,6 +275,64 @@ def list_chapter_documents(
         .where(Document.chapter_id == chapter_id)
         .order_by(Document.created_at.desc())
     ).all()
+
+
+@router.get(
+    "/{chapter_id}/documents/{doc_id}/keywords",
+    response_model=DocumentKeywordsOut,
+)
+async def get_chapter_document_keywords(
+    course_id: uuid.UUID,
+    chapter_id: uuid.UUID,
+    doc_id: uuid.UUID,
+    _: TeacherUser,
+    db: DbDep,
+):
+    _get_chapter_or_404(chapter_id, course_id, db)
+    doc = db.get(Document, doc_id)
+    if not doc or doc.chapter_id != chapter_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found."
+        )
+    if doc.conversion_status != ConversionStatus.completed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Document conversion not completed.",
+        )
+    items, cached = await get_or_compute_keyword_items(doc, db)
+    h = hash_converted_text((doc.converted_markdown or "").strip())
+    return DocumentKeywordsOut(items=items, cached=cached, content_sha256=h)
+
+
+@router.post(
+    "/{chapter_id}/documents/{doc_id}/keywords/refresh",
+    response_model=DocumentKeywordsOut,
+)
+async def refresh_chapter_document_keywords(
+    course_id: uuid.UUID,
+    chapter_id: uuid.UUID,
+    doc_id: uuid.UUID,
+    _: TeacherUser,
+    db: DbDep,
+):
+    """Clear cached heading list and re-run extraction (new heuristics / LLM prompt)."""
+    _get_chapter_or_404(chapter_id, course_id, db)
+    doc = db.get(Document, doc_id)
+    if not doc or doc.chapter_id != chapter_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found."
+        )
+    if doc.conversion_status != ConversionStatus.completed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Document conversion not completed.",
+        )
+    doc.keyword_cache = None
+    db.commit()
+    db.refresh(doc)
+    items, cached = await get_or_compute_keyword_items(doc, db)
+    h = hash_converted_text((doc.converted_markdown or "").strip())
+    return DocumentKeywordsOut(items=items, cached=cached, content_sha256=h)
 
 
 async def _embed_with_verification(
@@ -264,7 +354,13 @@ async def _embed_with_verification(
         try:
             await client.workspace.add_documents(slug, [location])
         except AnythingLLMError as exc:
-            logger.warning("Embedding attempt %d/%d failed for slug=%s: %s", attempt, retries, slug, exc)
+            logger.warning(
+                "Embedding attempt %d/%d failed for slug=%s: %s",
+                attempt,
+                retries,
+                slug,
+                exc,
+            )
             if attempt == retries:
                 return False
             await asyncio.sleep(verify_delay * attempt)
@@ -288,7 +384,10 @@ async def _embed_with_verification(
 
         logger.warning(
             "Document not found in workspace after embed (attempt %d/%d): slug=%s location=%s",
-            attempt, retries, slug, location,
+            attempt,
+            retries,
+            slug,
+            location,
         )
         if attempt < retries:
             await asyncio.sleep(verify_delay * attempt)
@@ -301,6 +400,7 @@ async def _process_document_upload(
     chapter_id: uuid.UUID,
     file_bytes: bytes,
     original_filename: str,
+    content_type: str,
 ) -> None:
     """
     Background task: upload the file to AnythingLLM, embed it into the teacher
@@ -327,10 +427,14 @@ async def _process_document_upload(
         except Exception:
             pass  # folder may already exist
 
-        result = await client.document.upload_file(file_bytes, original_filename, folder=folder)
+        result = await client.document.upload_file(
+            file_bytes, original_filename, folder=folder
+        )
 
         if not (result.success and result.documents):
-            logger.error("AnythingLLM upload failed for doc_id=%s: %s", doc_id, result.error)
+            logger.error(
+                "AnythingLLM upload failed for doc_id=%s: %s", doc_id, result.error
+            )
             doc.conversion_status = ConversionStatus.failed
             db.commit()
             return
@@ -350,7 +454,8 @@ async def _process_document_upload(
         if not teacher_ok:
             logger.error(
                 "Embedding verification failed for teacher workspace slug=%s doc_id=%s",
-                teacher_slug, doc_id,
+                teacher_slug,
+                doc_id,
             )
             doc.conversion_status = ConversionStatus.failed
             db.commit()
@@ -358,7 +463,21 @@ async def _process_document_upload(
 
         doc.conversion_status = ConversionStatus.completed
         db.commit()
-        logger.info("Document embedded successfully: doc_id=%s slug=%s", doc_id, teacher_slug)
+        logger.info(
+            "Document embedded successfully: doc_id=%s slug=%s", doc_id, teacher_slug
+        )
+
+        # ── 2b. Keyword extraction (file-bytes → Chat Completions) ─────────────
+        # Runs after embed commit. Failure is logged and never blocks fan-out.
+        try:
+            from document_keywords import extract_and_cache_keywords
+
+            await extract_and_cache_keywords(doc, file_bytes, content_type, db)
+        except Exception:
+            logger.exception(
+                "Keyword extraction failed for doc_id=%s — student fan-out continues",
+                doc_id,
+            )
 
         # ── 3. Best-effort fan-out to existing student workspaces ─────────────
         student_workspaces = db.scalars(
@@ -367,15 +486,20 @@ async def _process_document_upload(
             )
         ).all()
         for sw in student_workspaces:
-            ok = await _embed_with_verification(client, sw.workspace_slug, location, retries=2)
+            ok = await _embed_with_verification(
+                client, sw.workspace_slug, location, retries=2
+            )
             if not ok:
                 logger.warning(
                     "Could not verify embedding in student workspace slug=%s doc_id=%s",
-                    sw.workspace_slug, doc_id,
+                    sw.workspace_slug,
+                    doc_id,
                 )
 
     except Exception:
-        logger.exception("Unexpected error in _process_document_upload for doc_id=%s", doc_id)
+        logger.exception(
+            "Unexpected error in _process_document_upload for doc_id=%s", doc_id
+        )
         try:
             doc = db.get(Document, doc_id)
             if doc:
@@ -410,7 +534,7 @@ async def upload_chapter_document(
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported file type '{file.content_type}'. "
-                   f"Allowed: {', '.join(ALLOWED_TYPES.keys())}",
+            f"Allowed: {', '.join(ALLOWED_TYPES.keys())}",
         )
 
     _get_chapter_or_404(chapter_id, course_id, db)
@@ -441,6 +565,7 @@ async def upload_chapter_document(
         chapter_id,
         file_bytes,
         file.filename,
+        file.content_type,
     )
 
     return doc
@@ -474,13 +599,17 @@ async def delete_chapter_document(
         # Remove from teacher workspace
         if chapter.workspace_slug:
             try:
-                await client.workspace.remove_documents(chapter.workspace_slug, [location])
+                await client.workspace.remove_documents(
+                    chapter.workspace_slug, [location]
+                )
             except AnythingLLMError:
                 pass
 
         # Fan out removal to all student workspaces
         student_workspaces = db.scalars(
-            select(ChapterUserWorkspace).where(ChapterUserWorkspace.chapter_id == chapter_id)
+            select(ChapterUserWorkspace).where(
+                ChapterUserWorkspace.chapter_id == chapter_id
+            )
         ).all()
         for sw in student_workspaces:
             try:
@@ -495,6 +624,7 @@ async def delete_chapter_document(
 
 # ── Prompt helper ─────────────────────────────────────────────────────────────
 
+
 def _build_assignment_performance_block(
     chapter: Chapter,
     student_id: uuid.UUID,
@@ -505,10 +635,12 @@ def _build_assignment_performance_block(
     assignment in this chapter, including score and AI feedback (truncated).
     """
     assignments = db.scalars(
-        select(Assignment).where(
+        select(Assignment)
+        .where(
             Assignment.course_id == chapter.course_id,
             Assignment.chapter_id == chapter.id,
-        ).order_by(Assignment.created_at)
+        )
+        .order_by(Assignment.created_at)
     ).all()
 
     if not assignments:
@@ -520,7 +652,9 @@ def _build_assignment_performance_block(
             AssignmentSubmission.student_id == student_id,
         )
     ).all()
-    sub_map: dict[uuid.UUID, AssignmentSubmission] = {s.assignment_id: s for s in submissions}
+    sub_map: dict[uuid.UUID, AssignmentSubmission] = {
+        s.assignment_id: s for s in submissions
+    }
 
     lines: list[str] = ["Assignments in this chapter:"]
     for i, assignment in enumerate(assignments, 1):
@@ -539,7 +673,9 @@ def _build_assignment_performance_block(
                 score_str = str(sub.score)
             else:
                 score_str = "not graded"
-            lines.append(f"   Status: {sub.submission_status.value}  |  Score: {score_str}")
+            lines.append(
+                f"   Status: {sub.submission_status.value}  |  Score: {score_str}"
+            )
 
             if sub.ai_feedback:
                 preview = sub.ai_feedback[:600].rstrip()
@@ -560,7 +696,9 @@ def _build_chapter_prompt(
     Build the chapter-performance prompt enriched with assignment scores and
     AI feedback for the given student.
     """
-    assignment_performance = _build_assignment_performance_block(chapter, student_id, db)
+    assignment_performance = _build_assignment_performance_block(
+        chapter, student_id, db
+    )
 
     row = db.scalar(select(ChapterPerformancePrompt))
     template = row.prompt if row else DEFAULT_CHAPTER_PERFORMANCE_PROMPT
@@ -584,7 +722,10 @@ def _build_chapter_prompt(
 
 # ── Chapter Performance (teacher view) ─────────────────────────────────────────
 
-@router.get("/students/{student_id}/performance", response_model=list[StudentChapterPerformance])
+
+@router.get(
+    "/students/{student_id}/performance", response_model=list[StudentChapterPerformance]
+)
 def get_student_chapter_performance(
     course_id: uuid.UUID,
     student_id: uuid.UUID,
@@ -624,10 +765,12 @@ def get_student_chapter_performance(
 
     # All assignments across all chapters in this course
     assignments = db.scalars(
-        select(Assignment).where(
+        select(Assignment)
+        .where(
             Assignment.course_id == course_id,
             Assignment.chapter_id.in_(chapter_ids),
-        ).order_by(Assignment.created_at)
+        )
+        .order_by(Assignment.created_at)
     ).all()
 
     # All submissions by this student for those assignments
@@ -645,6 +788,7 @@ def get_student_chapter_performance(
 
     # Group assignments by chapter
     from collections import defaultdict
+
     assignments_by_chapter: dict[uuid.UUID, list[Assignment]] = defaultdict(list)
     for a in assignments:
         if a.chapter_id:
@@ -658,20 +802,24 @@ def get_student_chapter_performance(
             _Sub(
                 assignment_id=a.id,
                 assignment_name=a.name,
-                status=sub_map[a.id].submission_status.value if a.id in sub_map else "pending",
+                status=sub_map[a.id].submission_status.value
+                if a.id in sub_map
+                else "pending",
                 score=sub_map[a.id].score if a.id in sub_map else None,
                 max_score=a.max_score,
             )
             for a in chapter_assignments
         ]
-        result.append(StudentChapterPerformance(
-            chapter_id=chapter.id,
-            chapter_title=chapter.title,
-            has_ai_comment=comment is not None,
-            ai_comment=comment.comment if comment else None,
-            ai_comment_updated_at=comment.updated_at if comment else None,
-            submissions=summaries,
-        ))
+        result.append(
+            StudentChapterPerformance(
+                chapter_id=chapter.id,
+                chapter_title=chapter.title,
+                has_ai_comment=comment is not None,
+                ai_comment=comment.comment if comment else None,
+                ai_comment_updated_at=comment.updated_at if comment else None,
+                submissions=summaries,
+            )
+        )
 
     return result
 
@@ -699,10 +847,12 @@ def get_chapter_performance(
     comment_map: dict[uuid.UUID, ChapterAIComment] = {c.student_id: c for c in comments}
 
     assignments = db.scalars(
-        select(Assignment).where(
+        select(Assignment)
+        .where(
             Assignment.course_id == course_id,
             Assignment.chapter_id == chapter_id,
-        ).order_by(Assignment.created_at)
+        )
+        .order_by(Assignment.created_at)
     ).all()
 
     all_submissions = []
@@ -734,29 +884,37 @@ def get_chapter_performance(
                 assignment_id=assignment.id,
                 assignment_name=assignment.name,
                 status=sub_by_assignment[assignment.id].submission_status.value
-                if assignment.id in sub_by_assignment else "pending",
+                if assignment.id in sub_by_assignment
+                else "pending",
                 score=sub_by_assignment[assignment.id].score
-                if assignment.id in sub_by_assignment else None,
+                if assignment.id in sub_by_assignment
+                else None,
                 max_score=assignment.max_score,
             )
             for assignment in assignments
         ]
 
-        result.append(ChapterStudentPerformance(
-            student_id=enrollment.student_id,
-            student_name=student.user.nickname,
-            has_ai_comment=comment is not None,
-            ai_comment=comment.comment if comment else None,
-            ai_comment_updated_at=comment.updated_at if comment else None,
-            submissions=summaries,
-        ))
+        result.append(
+            ChapterStudentPerformance(
+                student_id=enrollment.student_id,
+                student_name=student.user.nickname,
+                has_ai_comment=comment is not None,
+                ai_comment=comment.comment if comment else None,
+                ai_comment_updated_at=comment.updated_at if comment else None,
+                submissions=summaries,
+            )
+        )
 
     return result
 
 
 # ── Chapter AI Comments ────────────────────────────────────────────────────────
 
-@router.post("/{chapter_id}/students/{student_id}/ai-comment/generate", response_model=ChapterAICommentOut)
+
+@router.post(
+    "/{chapter_id}/students/{student_id}/ai-comment/generate",
+    response_model=ChapterAICommentOut,
+)
 async def generate_ai_comment_for_student(
     course_id: uuid.UUID,
     chapter_id: uuid.UUID,
@@ -829,7 +987,9 @@ async def generate_ai_comment(
 ):
     """Generate or refresh the AI study comment for the current student on this chapter."""
     if current_user.role != UserRole.student:
-        raise HTTPException(status_code=403, detail="Only students can generate chapter AI comments.")
+        raise HTTPException(
+            status_code=403, detail="Only students can generate chapter AI comments."
+        )
 
     chapter = _get_chapter_or_404(chapter_id, course_id, db)
     student = db.get(StudentUser, current_user.id)
@@ -874,7 +1034,9 @@ async def stream_ai_comment(
 ):
     """SSE endpoint – streams the AI study comment via OpenAI and persists the result."""
     if current_user.role != UserRole.student:
-        raise HTTPException(status_code=403, detail="Only students can stream chapter AI comments.")
+        raise HTTPException(
+            status_code=403, detail="Only students can stream chapter AI comments."
+        )
 
     chapter = _get_chapter_or_404(chapter_id, course_id, db)
     student = db.get(StudentUser, current_user.id)
@@ -913,17 +1075,20 @@ async def stream_ai_comment(
         if existing:
             existing.comment = accumulated
         else:
-            db.add(ChapterAIComment(
-                chapter_id=chapter_id,
-                student_id=current_user.id,
-                comment=accumulated,
-            ))
+            db.add(
+                ChapterAIComment(
+                    chapter_id=chapter_id,
+                    student_id=current_user.id,
+                    comment=accumulated,
+                )
+            )
         db.commit()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 # ── Chapter Threads (Chatroom) ────────────────────────────────────────────────
+
 
 class ChatMessageRequest(BaseModel):
     message: str
@@ -939,14 +1104,20 @@ def list_threads(
     """List all chat threads the current user has in this chapter workspace."""
     _get_chapter_or_404(chapter_id, course_id, db)
     return db.scalars(
-        select(ChapterThread).where(
+        select(ChapterThread)
+        .where(
             ChapterThread.chapter_id == chapter_id,
             ChapterThread.user_id == current_user.id,
-        ).order_by(ChapterThread.created_at)
+        )
+        .order_by(ChapterThread.created_at)
     ).all()
 
 
-@router.post("/{chapter_id}/threads", response_model=ThreadOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{chapter_id}/threads",
+    response_model=ThreadOut,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_thread(
     course_id: uuid.UUID,
     chapter_id: uuid.UUID,
@@ -973,7 +1144,9 @@ async def create_thread(
     return record
 
 
-@router.delete("/{chapter_id}/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{chapter_id}/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_thread(  # still async because of the AnythingLLM API call
     course_id: uuid.UUID,
     chapter_id: uuid.UUID,
@@ -1025,8 +1198,15 @@ async def get_thread_history(
     # Use the stored workspace slug – no workspace creation on a history read
     workspace_slug = _lookup_workspace_slug(chapter, current_user, db)
     client = get_client()
-    history = await client.workspace.get_thread_history(workspace_slug, thread.thread_slug)
-    return {"history": [{"role": h.role, "content": h.content, "sentAt": h.sentAt} for h in history.history]}
+    history = await client.workspace.get_thread_history(
+        workspace_slug, thread.thread_slug
+    )
+    return {
+        "history": [
+            {"role": h.role, "content": h.content, "sentAt": h.sentAt}
+            for h in history.history
+        ]
+    }
 
 
 @router.post("/{chapter_id}/threads/{thread_id}/stream")

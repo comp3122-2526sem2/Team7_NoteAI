@@ -10,12 +10,12 @@ import {
 } from "antd";
 import {
   PlusOutlined, ThunderboltOutlined, ReloadOutlined, EyeOutlined,
-  DeleteOutlined, FileOutlined, UploadOutlined, SendOutlined,
-  RobotOutlined, UserOutlined, MinusCircleOutlined,
+  DeleteOutlined, FileOutlined, FileTextOutlined, UploadOutlined, SendOutlined,
+  RobotOutlined, UserOutlined, MinusCircleOutlined, EditOutlined,
 } from "@ant-design/icons";
 import type { UploadFile } from "antd";
 import dayjs from "dayjs";
-import { assignmentsApi, chaptersApi } from "@/lib/api";
+import { assignmentsApi, chaptersApi, lessonPlansApi } from "@/lib/api";
 import type {
   Assignment, AssignmentContent, AssignmentSection,
   ChatMessage, ChapterThread, Document, LongQuestion, MCQuestion, PassageSection,
@@ -350,6 +350,11 @@ export default function ChapterDetailPage({
     queryKey: ["chapter", courseId, chapterId],
     queryFn: () => chaptersApi.get(courseId, chapterId).then((r) => r.data),
   });
+  const lessonPlanQuery = useQuery({
+    queryKey: ["lesson-plan", courseId, chapterId],
+    queryFn: () => lessonPlansApi.get(courseId, chapterId).then((r) => r.data),
+    retry: false,
+  });
 
   const { data: assignments, isLoading: assignmentsLoading } = useQuery({
     queryKey: ["assignments", courseId, { chapterId }],
@@ -450,6 +455,7 @@ export default function ChapterDetailPage({
       await chaptersApi.uploadDocument(courseId, chapterId, formData);
       message.success(`${file.name} saved — embedding in background…`);
       refetchDocs();
+      qc.invalidateQueries({ queryKey: ["chapter-doc-keywords", courseId, chapterId] });
     } catch {
       message.error(`Failed to upload ${file.name}`);
     } finally {
@@ -547,6 +553,57 @@ export default function ChapterDetailPage({
           </Paragraph>
         )}
       </div>
+
+      {isTeacher && (
+        <Card
+          style={{ marginBottom: 24 }}
+          title="教案"
+          extra={
+            <Link href={`/courses/${courseId}/chapters/${chapterId}/lesson-plan`}>
+              <Button type="primary" icon={<EditOutlined />}>
+                開啟編輯器
+              </Button>
+            </Link>
+          }
+        >
+          <Space>
+            <Text type="secondary">狀態：</Text>
+            {lessonPlanQuery.isLoading ? (
+              <Tag color="default">載入中</Tag>
+            ) : lessonPlanQuery.isError ? (
+              <Tag color="orange">尚未建立</Tag>
+            ) : (
+              <Tag color={lessonPlanQuery.data?.status === "published" ? "green" : "blue"}>
+                {lessonPlanQuery.data?.status === "draft"
+                  ? "草稿"
+                  : lessonPlanQuery.data?.status === "published"
+                    ? "已發佈"
+                    : lessonPlanQuery.data?.status === "archived"
+                      ? "已封存"
+                      : (lessonPlanQuery.data?.status ?? "—")}
+              </Tag>
+            )}
+          </Space>
+        </Card>
+      )}
+
+      {!isTeacher && (
+        <Card style={{ marginBottom: 24 }} title="教案">
+          {lessonPlanQuery.isLoading ? (
+            <Tag color="default">載入中</Tag>
+          ) : lessonPlanQuery.isError ? (
+            <Text type="secondary">老師尚未發佈教案，或此章節尚未建立教案。</Text>
+          ) : lessonPlanQuery.data?.status === "published" ? (
+            <Link href={`/courses/${courseId}/chapters/${chapterId}/lesson-plan`}>
+              <Button type="primary" icon={<FileTextOutlined />}>
+                查看教案
+              </Button>
+            </Link>
+          ) : (
+            <Text type="secondary">教案尚未發佈。</Text>
+          )}
+        </Card>
+      )}
 
       <Row gutter={[24, 24]}>
         <Col xs={24} lg={!isTeacher ? 14 : 24}>
