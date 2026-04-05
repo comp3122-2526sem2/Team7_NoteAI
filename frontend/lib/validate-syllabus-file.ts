@@ -4,8 +4,8 @@
  * immediate feedback without waiting for a server round-trip.
  */
 
-const MAX_FILE_SIZE_MB = 20;
-const MAX_PDF_PAGES = 50;
+const MAX_FILE_SIZE_MB = 30;
+const MAX_PDF_PAGES = 200;
 
 /**
  * Returns an error message string, or null if the file is valid.
