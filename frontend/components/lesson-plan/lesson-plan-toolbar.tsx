@@ -45,12 +45,12 @@ export function LessonPlanToolbar({
   const moreItems: MenuProps["items"] = [
     {
       key: "clear",
-      label: "清空教案內容",
+      label: "Clear lesson plan content",
       onClick: onClearContent,
     },
     {
       key: "delete",
-      label: "刪除整份教案",
+      label: "Delete lesson plan",
       danger: true,
       icon: <DeleteOutlined />,
       onClick: onDeletePlan,
@@ -64,12 +64,12 @@ export function LessonPlanToolbar({
     >
       <Space wrap>
         <Link href={chapterHref}>
-          <Button icon={<ArrowLeftOutlined />}>返回章節</Button>
+          <Button icon={<ArrowLeftOutlined />}>Back to chapter</Button>
         </Link>
         <Input
           value={title}
           onChange={(e) => onTitleChange(e.target.value)}
-          placeholder="教案標題"
+          placeholder="Lesson plan title"
           style={{ width: 280 }}
         />
         <Select<LessonPlanStatus>
@@ -77,23 +77,23 @@ export function LessonPlanToolbar({
           onChange={onStatusChange}
           style={{ width: 140 }}
           options={[
-            { value: "draft", label: "草稿" },
-            { value: "published", label: "已發佈" },
-            { value: "archived", label: "已封存" },
+            { value: "draft", label: "Draft" },
+            { value: "published", label: "Published" },
+            { value: "archived", label: "Archived" },
           ]}
         />
       </Space>
 
       <Space wrap>
         <Dropdown menu={{ items: moreItems }} trigger={["click"]}>
-          <Button icon={<MoreOutlined />}>更多</Button>
+          <Button icon={<MoreOutlined />}>More</Button>
         </Dropdown>
-        <Button onClick={onTemplateOpen}>範本</Button>
+        <Button onClick={onTemplateOpen}>Templates</Button>
         <Button icon={<HistoryOutlined />} onClick={onHistoryOpen}>
-          版本紀錄
+          Version history
         </Button>
         <Button icon={<FilePdfOutlined />} onClick={onExportPdf}>
-          匯出 PDF
+          Export PDF
         </Button>
         <Button
           type="primary"
@@ -101,7 +101,7 @@ export function LessonPlanToolbar({
           loading={saving}
           onClick={onSave}
         >
-          儲存
+          Save
         </Button>
       </Space>
     </Space>

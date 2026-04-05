@@ -6,11 +6,11 @@ import type { LessonPlanOutputLanguage, LessonPlanStylePreset } from "@/lib/api"
 const { Text, Paragraph } = Typography;
 
 const STYLE_OPTIONS: { value: LessonPlanStylePreset; label: string }[] = [
-  { value: "balanced", label: "均衡（講授＋活動）" },
-  { value: "activity_heavy", label: "活動為主（小組／操作）" },
-  { value: "lecture_focus", label: "講授為主" },
-  { value: "exam_prep", label: "測驗備戰" },
-  { value: "public_lesson", label: "公開課／觀課" },
+  { value: "balanced", label: "Balanced (lecture + activity)" },
+  { value: "activity_heavy", label: "Activity-heavy (group / hands-on)" },
+  { value: "lecture_focus", label: "Lecture-focused" },
+  { value: "exam_prep", label: "Exam preparation" },
+  { value: "public_lesson", label: "Open lesson / observation" },
 ];
 
 interface Props {
@@ -31,13 +31,13 @@ export function LessonPlanAiSettings({
   onFocusChange,
 }: Props) {
   return (
-    <Card size="small" title="AI 設定">
+    <Card size="small" title="AI Settings">
       <Space orientation="vertical" style={{ width: "100%" }} size={12}>
         <Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 13 }}>
-          語言與風格會套用於「AI 產生」與「選取重寫」。焦點／關鍵字會幫忙對準教材。
+          Language and style apply to both &quot;Generate&quot; and &quot;Rewrite&quot;. Focus / keywords help align with your materials.
         </Paragraph>
         <div>
-          <Text type="secondary">輸出語言</Text>
+          <Text type="secondary">Output language</Text>
           <div style={{ marginTop: 6 }}>
             <Radio.Group
               value={outputLanguage}
@@ -49,7 +49,7 @@ export function LessonPlanAiSettings({
               block
             >
               <Radio.Button value="zh" style={{ width: "50%", textAlign: "center" }}>
-                繁中
+                Traditional Chinese
               </Radio.Button>
               <Radio.Button value="en" style={{ width: "50%", textAlign: "center" }}>
                 English
@@ -58,7 +58,7 @@ export function LessonPlanAiSettings({
           </div>
         </div>
         <div>
-          <Text type="secondary">課堂風格</Text>
+          <Text type="secondary">Classroom style</Text>
           <Select<LessonPlanStylePreset>
             style={{ width: "100%", marginTop: 6 }}
             value={stylePreset}
@@ -67,13 +67,13 @@ export function LessonPlanAiSettings({
           />
         </div>
         <div>
-          <Text type="secondary">本課焦點／關鍵字（選填）</Text>
+          <Text type="secondary">Focus / keywords for this lesson (optional)</Text>
           <Input.TextArea
             style={{ marginTop: 6 }}
             rows={2}
             value={focusInstruction}
             onChange={(e) => onFocusChange(e.target.value)}
-            placeholder="例：代數式化簡、實驗安全、閱讀策略…"
+            placeholder="e.g. Simplifying expressions, lab safety, reading strategies..."
           />
         </div>
       </Space>

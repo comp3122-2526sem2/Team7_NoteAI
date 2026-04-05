@@ -16,8 +16,8 @@ import type { LessonPlanConfig } from "@/lib/api";
 
 const { Paragraph } = Typography;
 
-const METHOD_OPTIONS = ["講授", "小組討論", "示範", "探究活動", "遊戲化學習"];
-const ASSESSMENT_OPTIONS = ["問答", "工作紙", "小測驗", "專題研習", "口頭匯報"];
+const METHOD_OPTIONS = ["Lecture", "Group discussion", "Demonstration", "Inquiry activity", "Gamified learning"];
+const ASSESSMENT_OPTIONS = ["Q&A", "Worksheet", "Quiz", "Project-based", "Oral presentation"];
 const PRESET_MINUTES = [35, 40, 80] as const;
 
 interface Props {
@@ -61,26 +61,26 @@ export function LessonPlanConfigPanel({ value, onChange }: Props) {
   };
 
   return (
-    <Card title="教案設定（可選）" size="small">
+    <Card title="Lesson Plan Settings (optional)" size="small">
       <Paragraph type="secondary" style={{ marginBottom: 12, fontSize: 13 }}>
-        最少填「課題」與「時長」即可產生；其餘愈完整，AI 越能配合你的班級。
+        At minimum, fill in &quot;Topic&quot; and &quot;Duration&quot; to generate. The more complete, the better AI can tailor to your class.
       </Paragraph>
       <Space orientation="vertical" style={{ width: "100%" }} size={14}>
         <div>
-          <Tooltip title="本課主題或單元名稱。">
-            <div>課題</div>
+          <Tooltip title="Topic or unit name for this lesson.">
+            <div>Topic</div>
           </Tooltip>
           <Input
             value={(value.topic as string) ?? ""}
             onChange={(e) => setField("topic", e.target.value)}
-            placeholder="例如：海圖與避碰規則"
+            placeholder="e.g. Charts and Collision Avoidance Rules"
             style={{ marginTop: 6 }}
           />
         </div>
 
         <div>
-          <Tooltip title="預設 35／40／80 分鐘，或自訂。">
-            <div>課堂時長</div>
+          <Tooltip title="Default: 35 / 40 / 80 minutes, or custom.">
+            <div>Duration</div>
           </Tooltip>
           <Radio.Group
             value={durationPreset}
@@ -90,7 +90,7 @@ export function LessonPlanConfigPanel({ value, onChange }: Props) {
             <Radio value="35">35</Radio>
             <Radio value="40">40</Radio>
             <Radio value="80">80</Radio>
-            <Radio value="custom">自訂</Radio>
+            <Radio value="custom">Custom</Radio>
           </Radio.Group>
           {durationPreset === "custom" && (
             <InputNumber
@@ -99,30 +99,30 @@ export function LessonPlanConfigPanel({ value, onChange }: Props) {
               value={dm}
               onChange={(val) => setField("duration_minutes", val ?? 1)}
               style={{ width: "100%" }}
-              addonAfter="分鐘"
+              addonAfter="min"
             />
           )}
         </div>
 
         <div>
-          <Tooltip title="整體難度。">
-            <div>難度</div>
+          <Tooltip title="Overall difficulty.">
+            <div>Difficulty</div>
           </Tooltip>
           <Radio.Group
             value={(value.difficulty as string) ?? "intermediate"}
             onChange={(e) => setField("difficulty", e.target.value)}
             style={{ marginTop: 6 }}
             options={[
-              { label: "基礎", value: "basic" },
-              { label: "中等", value: "intermediate" },
-              { label: "進階", value: "advanced" },
+              { label: "Basic", value: "basic" },
+              { label: "Intermediate", value: "intermediate" },
+              { label: "Advanced", value: "advanced" },
             ]}
           />
         </div>
 
         <Space orientation="vertical" style={{ width: "100%" }} size={14}>
           <div>
-            <div>教學法</div>
+            <div>Teaching Methods</div>
             <Checkbox.Group
               style={{ marginTop: 6 }}
               value={(value.teaching_method as string[]) ?? []}
@@ -132,32 +132,32 @@ export function LessonPlanConfigPanel({ value, onChange }: Props) {
           </div>
 
           <div>
-            <div>教學內容重點</div>
+            <div>Teaching Focus</div>
             <Input.TextArea
               style={{ marginTop: 6 }}
               rows={3}
               value={(value.teaching_content as string) ?? ""}
               onChange={(e) => setField("teaching_content", e.target.value)}
-              placeholder="本課要涵蓋的概念或技能（可空）"
+              placeholder="Concepts or skills to cover this lesson (optional)"
             />
           </div>
 
           <div>
-            <div>學生程度</div>
+            <div>Student Level</div>
             <Radio.Group
               value={(value.student_level as string) ?? "medium"}
               onChange={(e) => setField("student_level", e.target.value)}
               style={{ marginTop: 6 }}
               options={[
-                { label: "較弱", value: "low" },
-                { label: "中等", value: "medium" },
-                { label: "較強", value: "high" },
+                { label: "Low", value: "low" },
+                { label: "Medium", value: "medium" },
+                { label: "High", value: "high" },
               ]}
             />
           </div>
 
           <div>
-            <div>評量方式</div>
+            <div>Assessment Methods</div>
             <Checkbox.Group
               style={{ marginTop: 6 }}
               value={(value.assessment as string[]) ?? []}
@@ -167,7 +167,7 @@ export function LessonPlanConfigPanel({ value, onChange }: Props) {
           </div>
 
           <div>
-            <div style={{ marginBottom: 8 }}>學習目標</div>
+            <div style={{ marginBottom: 8 }}>Learning Objectives</div>
             <Space orientation="vertical" style={{ width: "100%" }}>
               {objectives.map((item, idx) => (
                 <Space key={idx} style={{ width: "100%" }} wrap>
@@ -176,15 +176,15 @@ export function LessonPlanConfigPanel({ value, onChange }: Props) {
                     style={{ flex: 1, minWidth: 120 }}
                     value={item}
                     onChange={(e) => updateObjective(idx, e.target.value)}
-                    placeholder="學習目標"
+                    placeholder="e.g. Students can identify..."
                   />
                   <Button danger size="small" onClick={() => removeObjective(idx)}>
-                    移除
+                    Remove
                   </Button>
                 </Space>
               ))}
               <Button size="small" onClick={addObjective}>
-                + 新增目標
+                + Add objective
               </Button>
             </Space>
           </div>
