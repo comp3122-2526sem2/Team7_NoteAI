@@ -488,6 +488,7 @@ export interface DocumentKeywordsOut {
   items: string[];
   cached: boolean;
   content_sha256: string;
+  status: "extracting" | "ready";
 }
 
 export interface Document {
