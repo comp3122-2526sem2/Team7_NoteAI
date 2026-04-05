@@ -452,8 +452,9 @@ async def extract_and_cache_keywords(
       Phase 2 (inside try/except): LLM call → write real cache on success, or
         clear sentinel to NULL on failure so GET can retry immediately.
 
-    Never raises — all exceptions in Phase 2 are logged and swallowed so callers
-    (e.g. _process_document_upload) are never interrupted.
+    Phase 2 never raises — all LLM/processing exceptions are logged and swallowed
+    so callers (e.g. _process_document_upload) are never interrupted by extraction
+    failures. Phase 1 (sentinel DB write) can raise on DB connectivity errors.
 
     Cache schema written on success:
       {
