@@ -573,6 +573,13 @@ async def get_or_compute_keyword_items(doc: Any, db: Any) -> tuple[list[str], bo
     cache = parse_keyword_cache(doc.keyword_cache)
     file_path = Path(doc.original_file_path) if doc.original_file_path else None
 
+    # ── 0. Sentinel check — extraction already in progress ───────────────────
+    # If the background task wrote a sentinel before its LLM call, return empty
+    # results immediately rather than spawning a duplicate LLM call. The sentinel
+    # expires after EXTRACTING_SENTINEL_TIMEOUT_SECONDS to handle crashed tasks.
+    if _is_extracting(cache):
+        return [], False
+
     # ── 1. file_sha256 cache hit ──────────────────────────────────────────────
     # Only enter this branch when cache has a file_sha256 and the file still exists.
     if (
