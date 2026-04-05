@@ -1,4 +1,4 @@
-name: Build and Push Frontend Docker Image
+name: Build and Push Backend Docker Image
 
 on:
   push:
@@ -8,8 +8,8 @@ on:
       - "v*.*.*"
 
 jobs:
-  build-frontend:
-    name: Frontend — Build & Push
+  build-backend:
+    name: Backend — Build & Push
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -31,7 +31,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/noteai-frontend
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/noteai-backend
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
@@ -40,12 +40,10 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
+          context: ./backend
+          file: ./backend/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
