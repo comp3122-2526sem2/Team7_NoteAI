@@ -31,7 +31,7 @@ export function VersionHistoryDrawer({
 }: Props) {
   return (
     <Drawer
-      title="版本紀錄"
+      title="Version History"
       open={open}
       onClose={onClose}
       size={460}
@@ -44,7 +44,7 @@ export function VersionHistoryDrawer({
           <List.Item
             actions={[
               <Button key="preview" size="small" onClick={() => onPreview(item.id)}>
-                預覽
+                Preview
               </Button>,
               <Button
                 key="restore"
@@ -53,14 +53,14 @@ export function VersionHistoryDrawer({
                 loading={restoring}
                 onClick={() => onRestore(item.id)}
               >
-                還原
+                Restore
               </Button>,
               <Popconfirm
                 key="delete"
-                title="刪除此版本紀錄？"
-                description="只會刪除歷史快照，不會改動目前教案正文。"
-                okText="刪除"
-                cancelText="取消"
+                title="Delete this version?"
+                description="This only deletes the historical snapshot and does not affect the current lesson plan."
+                okText="Delete"
+                cancelText="Cancel"
                 okButtonProps={{ danger: true }}
                 onConfirm={() => onDeleteVersion(item.id)}
               >
@@ -70,7 +70,7 @@ export function VersionHistoryDrawer({
                   icon={<DeleteOutlined />}
                   loading={deletingVersionId === item.id}
                 >
-                  刪除
+                  Delete
                 </Button>
               </Popconfirm>,
             ]}
@@ -82,7 +82,7 @@ export function VersionHistoryDrawer({
                   <Text>{new Date(item.created_at).toLocaleString()}</Text>
                 </Space>
               }
-              description={item.saved_by ? `儲存者：${item.saved_by}` : "儲存者：未知"}
+              description={item.saved_by ? `Saved by: ${item.saved_by}` : "Saved by: Unknown"}
             />
           </List.Item>
         )}

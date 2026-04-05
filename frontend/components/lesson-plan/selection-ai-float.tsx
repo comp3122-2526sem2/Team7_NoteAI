@@ -120,18 +120,18 @@ export function SelectionAiFloat({ containerRef, loading, onRegenerate }: Props)
         onOpenChange={handleOpenChange}
         trigger={[]}
         placement="bottomLeft"
-        title="AI 重寫選取文字"
+        title="AI Rewrite Selected Text"
         getPopupContainer={(node) => node.parentElement ?? document.body}
         content={
           <Space orientation="vertical" style={{ width: 280 }} size={8}>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              告訴 AI 想點改（例如：簡化、加例子、改成英文）。
+              Tell the AI how to revise it (e.g. simplify, add examples, change to English).
             </Text>
             <Input.TextArea
               rows={3}
               value={instruction}
               onChange={(e) => setInstruction(e.target.value)}
-              placeholder="改寫指示…"
+              placeholder="Rewrite instructions..."
             />
             <Button
               type="primary"
@@ -145,12 +145,12 @@ export function SelectionAiFloat({ containerRef, loading, onRegenerate }: Props)
                   handleOpenChange(false);
                   return;
                 }
-                const instr = instruction.trim() || "請改寫得更清晰、適合課堂使用。";
+                const instr = instruction.trim() || "Please rewrite this to be clearer and suitable for classroom use.";
                 onRegenerate(text, instr);
                 handleOpenChange(false);
               }}
             >
-              重寫
+              Rewrite
             </Button>
           </Space>
         }
@@ -161,7 +161,7 @@ export function SelectionAiFloat({ containerRef, loading, onRegenerate }: Props)
           icon={<ThunderboltOutlined />}
           onMouseDown={handleTriggerMouseDown}
         >
-          AI 重寫
+          AI Rewrite
         </Button>
       </Popover>
     </div>
