@@ -442,12 +442,20 @@ async def extract_and_cache_keywords(
     db: Any,
 ) -> None:
     """
-    Run file-bytes keyword extraction and persist results to doc.keyword_cache.
+    Write an extracting sentinel, run file-bytes keyword extraction, then persist
+    results to doc.keyword_cache.
 
-    Never raises — all exceptions are logged and swallowed so callers
-    (e.g. _process_document_upload) can continue without interruption.
+    Two-phase execution:
+      Phase 1 (outside try): write sentinel {status:"extracting"} and db.commit().
+        This prevents concurrent GET /keywords calls from spawning duplicate LLM
+        calls — they see the sentinel and return [] immediately.
+      Phase 2 (inside try/except): LLM call → write real cache on success, or
+        clear sentinel to NULL on failure so GET can retry immediately.
 
-    Cache schema written:
+    Never raises — all exceptions in Phase 2 are logged and swallowed so callers
+    (e.g. _process_document_upload) are never interrupted.
+
+    Cache schema written on success:
       {
         "version": KEYWORD_CACHE_VERSION,   # int
         "file_sha256": "<hex>",
@@ -458,6 +466,21 @@ async def extract_and_cache_keywords(
     """
     from datetime import datetime, timezone
 
+    # ── Phase 1: write sentinel BEFORE any LLM call (no try/except) ──────────
+    # This commit is intentionally outside any exception handler so the sentinel
+    # is always visible to concurrent GET /keywords requests before the LLM call
+    # begins. The GET endpoint checks _is_extracting() and returns [] instead of
+    # spawning a duplicate LLM call.
+    doc.keyword_cache = {
+        "version": KEYWORD_CACHE_VERSION,
+        "status": "extracting",
+        "items": [],
+        "extracting_since": datetime.now(timezone.utc).isoformat(),
+    }
+    db.add(doc)
+    db.commit()
+
+    # ── Phase 2: LLM call — wrapped in try/except so failures never raise ────
     try:
         file_sha256 = hashlib.sha256(file_bytes).hexdigest()
         items = await extract_keyword_items_from_file_bytes(
@@ -479,8 +502,13 @@ async def extract_and_cache_keywords(
             file_sha256,
         )
     except Exception:
+        # Clear the sentinel so GET /keywords can retry its own LLM path
+        # immediately without waiting for EXTRACTING_SENTINEL_TIMEOUT_SECONDS.
+        doc.keyword_cache = None
+        db.add(doc)
+        db.commit()
         logger.exception(
-            "extract_and_cache_keywords failed for doc_id=%s — keyword_cache unchanged",
+            "extract_and_cache_keywords failed for doc_id=%s — sentinel cleared",
             doc.id,
         )
 
