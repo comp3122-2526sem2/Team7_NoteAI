@@ -1,6 +1,22 @@
 # After changing backend/Dockerfile or backend/requirements.txt, rebuild so every
 # machine gets the same image: docker compose build --no-cache backend
+# After changing frontend/Dockerfile or frontend/package.json, rebuild: docker compose build --no-cache frontend
 services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: noteai_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - noteai_network
+
   backend:
     build:
       context: ./backend
