@@ -526,6 +526,8 @@ def _is_extracting(cache: dict | None) -> bool:
     sentinel is treated as stale (background task crashed) and callers are
     allowed to re-extract.
     """
+    from datetime import datetime, timezone
+
     if not isinstance(cache, dict):
         return False
     if cache.get("status") != "extracting":
@@ -533,8 +535,6 @@ def _is_extracting(cache: dict | None) -> bool:
     extracting_since_str = cache.get("extracting_since")
     if not extracting_since_str:
         return True  # sentinel present but no timestamp → treat as live
-    from datetime import datetime, timezone
-
     try:
         extracting_since = datetime.fromisoformat(extracting_since_str)
         elapsed = (datetime.now(timezone.utc) - extracting_since).total_seconds()
