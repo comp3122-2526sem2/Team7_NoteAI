@@ -13,6 +13,7 @@ const allowedDevOrigins =
     .filter(Boolean) ?? [];
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   reactCompiler: true,
   ...(allowedDevOrigins.length > 0 ? { allowedDevOrigins } : {}),
 };
