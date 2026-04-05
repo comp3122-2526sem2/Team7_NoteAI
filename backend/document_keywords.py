@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # --- Cache --------------------------------------------------------------------
 
 KEYWORD_CACHE_VERSION = 6
+EXTRACTING_SENTINEL_TIMEOUT_SECONDS = 600  # 10 minutes
 
 # --- Limits -------------------------------------------------------------------
 
@@ -515,6 +516,31 @@ def parse_keyword_cache(raw: Any) -> dict[str, Any] | None:
     if isinstance(raw, dict):
         return raw
     return None
+
+
+def _is_extracting(cache: dict | None) -> bool:
+    """Return True if cache holds a live extracting sentinel.
+
+    A sentinel is considered live if it was written within
+    EXTRACTING_SENTINEL_TIMEOUT_SECONDS seconds. After the timeout, the
+    sentinel is treated as stale (background task crashed) and callers are
+    allowed to re-extract.
+    """
+    if not isinstance(cache, dict):
+        return False
+    if cache.get("status") != "extracting":
+        return False
+    extracting_since_str = cache.get("extracting_since")
+    if not extracting_since_str:
+        return True  # sentinel present but no timestamp → treat as live
+    from datetime import datetime, timezone
+
+    try:
+        extracting_since = datetime.fromisoformat(extracting_since_str)
+        elapsed = (datetime.now(timezone.utc) - extracting_since).total_seconds()
+        return elapsed < EXTRACTING_SENTINEL_TIMEOUT_SECONDS
+    except Exception:
+        return True  # malformed timestamp → be conservative, treat as live
 
 
 async def get_or_compute_keyword_items(doc: Any, db: Any) -> tuple[list[str], bool]:
