@@ -8,6 +8,7 @@ class DocumentKeywordsOut(BaseModel):
     items: list[str]
     cached: bool
     content_sha256: str
+    status: str = "ready"  # "extracting" | "ready"
 
 
 class DocumentOut(BaseModel):

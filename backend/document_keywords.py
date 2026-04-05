@@ -435,85 +435,6 @@ async def extract_keyword_items_from_file_bytes(
     return filter_heading_candidates(parsed, max_items=FILE_LLM_MAX_ITEMS)
 
 
-async def extract_and_cache_keywords(
-    doc: Any,
-    file_bytes: bytes,
-    content_type: str,
-    db: Any,
-) -> None:
-    """
-    Write an extracting sentinel, run file-bytes keyword extraction, then persist
-    results to doc.keyword_cache.
-
-    Two-phase execution:
-      Phase 1 (outside try): write sentinel {status:"extracting"} and db.commit().
-        This prevents concurrent GET /keywords calls from spawning duplicate LLM
-        calls — they see the sentinel and return [] immediately.
-      Phase 2 (inside try/except): LLM call → write real cache on success, or
-        clear sentinel to NULL on failure so GET can retry immediately.
-
-    Phase 2 never raises — all LLM/processing exceptions are logged and swallowed
-    so callers (e.g. _process_document_upload) are never interrupted by extraction
-    failures. Phase 1 (sentinel DB write) can raise on DB connectivity errors.
-
-    Cache schema written on success:
-      {
-        "version": KEYWORD_CACHE_VERSION,   # int
-        "file_sha256": "<hex>",
-        "content_sha256": null,
-        "items": ["..."],
-        "updated_at": "<ISO datetime>"
-      }
-    """
-    from datetime import datetime, timezone
-
-    # ── Phase 1: write sentinel BEFORE any LLM call (no try/except) ──────────
-    # This commit is intentionally outside any exception handler so the sentinel
-    # is always visible to concurrent GET /keywords requests before the LLM call
-    # begins. The GET endpoint checks _is_extracting() and returns [] instead of
-    # spawning a duplicate LLM call.
-    doc.keyword_cache = {
-        "version": KEYWORD_CACHE_VERSION,
-        "status": "extracting",
-        "items": [],
-        "extracting_since": datetime.now(timezone.utc).isoformat(),
-    }
-    db.add(doc)
-    db.commit()
-
-    # ── Phase 2: LLM call — wrapped in try/except so failures never raise ────
-    try:
-        file_sha256 = hashlib.sha256(file_bytes).hexdigest()
-        items = await extract_keyword_items_from_file_bytes(
-            file_bytes, content_type, doc.original_filename
-        )
-        doc.keyword_cache = {
-            "version": KEYWORD_CACHE_VERSION,
-            "file_sha256": file_sha256,
-            "content_sha256": None,
-            "items": items,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        db.add(doc)
-        db.commit()
-        logger.info(
-            "keyword_cache written: doc_id=%s items=%d file_sha256=%.8s",
-            doc.id,
-            len(items),
-            file_sha256,
-        )
-    except Exception:
-        # Clear the sentinel so GET /keywords can retry its own LLM path
-        # immediately without waiting for EXTRACTING_SENTINEL_TIMEOUT_SECONDS.
-        doc.keyword_cache = None
-        db.add(doc)
-        db.commit()
-        logger.exception(
-            "extract_and_cache_keywords failed for doc_id=%s — sentinel cleared",
-            doc.id,
-        )
-
-
 def parse_json_string_array(raw: str) -> list[str]:
     text = (raw or "").strip()
     if not text:
@@ -690,7 +611,7 @@ async def get_or_compute_keyword_items(doc: Any, db: Any) -> tuple[list[str], bo
 
     # ── 4. Markdown heuristic + LLM verify (legacy fallback) ─────────────────
     if not body:
-        return [], True
+        return [], False
 
     items = collect_heuristic_candidates(body)
 

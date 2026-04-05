@@ -5,6 +5,15 @@ import os
 import uuid
 from pathlib import Path
 
+from document_keywords import (
+    KEYWORD_CACHE_VERSION,
+    _is_extracting,
+    get_or_compute_keyword_items,
+    hash_converted_text,
+    parse_keyword_cache,
+)
+from schemas.documents import DocumentKeywordsOut, DocumentOut
+
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, status
@@ -41,8 +50,7 @@ from schemas import (
     ThreadCreate,
     ThreadOut,
 )
-from document_keywords import get_or_compute_keyword_items, hash_converted_text
-from schemas.documents import DocumentKeywordsOut, DocumentOut
+
 
 router = APIRouter(prefix="/courses/{course_id}/chapters", tags=["Chapters"])
 
@@ -178,6 +186,30 @@ def _lookup_workspace_slug(chapter: Chapter, current_user, db) -> str:
     return uw.workspace_slug
 
 
+async def _run_keyword_extraction_background(doc_id: uuid.UUID) -> None:
+    """Background task: re-run keyword extraction for a single document.
+
+    Clears the extracting sentinel from keyword_cache so get_or_compute_keyword_items
+    runs fresh extraction instead of short-circuiting on the sentinel check.
+    """
+    db = SessionLocal()
+    try:
+        doc = db.get(Document, doc_id)
+        if not doc:
+            return
+        # Clear sentinel so get_or_compute_keyword_items runs fresh extraction.
+        # (It short-circuits and returns [] if it sees the sentinel.)
+        doc.keyword_cache = None
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        await get_or_compute_keyword_items(doc, db)
+    except Exception:
+        logger.exception("Background keyword extraction failed for doc_id=%s", doc_id)
+    finally:
+        db.close()
+
+
 # ── Chapters ──────────────────────────────────────────────────────────────────
 
 
@@ -301,7 +333,11 @@ async def get_chapter_document_keywords(
         )
     items, cached = await get_or_compute_keyword_items(doc, db)
     h = hash_converted_text((doc.converted_markdown or "").strip())
-    return DocumentKeywordsOut(items=items, cached=cached, content_sha256=h)
+    cache = parse_keyword_cache(doc.keyword_cache)
+    extraction_status = "extracting" if _is_extracting(cache) else "ready"
+    return DocumentKeywordsOut(
+        items=items, cached=cached, content_sha256=h, status=extraction_status
+    )
 
 
 @router.post(
@@ -314,8 +350,11 @@ async def refresh_chapter_document_keywords(
     doc_id: uuid.UUID,
     _: TeacherUser,
     db: DbDep,
+    background_tasks: BackgroundTasks,
 ):
-    """Clear cached heading list and re-run extraction (new heuristics / LLM prompt)."""
+    """Clear cached heading list and fire background re-extraction. Returns immediately with status='extracting'."""
+    from datetime import datetime, timezone
+
     _get_chapter_or_404(chapter_id, course_id, db)
     doc = db.get(Document, doc_id)
     if not doc or doc.chapter_id != chapter_id:
@@ -327,12 +366,26 @@ async def refresh_chapter_document_keywords(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Document conversion not completed.",
         )
+
     doc.keyword_cache = None
     db.commit()
-    db.refresh(doc)
-    items, cached = await get_or_compute_keyword_items(doc, db)
-    h = hash_converted_text((doc.converted_markdown or "").strip())
-    return DocumentKeywordsOut(items=items, cached=cached, content_sha256=h)
+
+    content_sha256 = hash_converted_text((doc.converted_markdown or "").strip())
+
+    # Write extracting sentinel so GET /keywords returns status="extracting" immediately
+    doc.keyword_cache = {
+        "version": KEYWORD_CACHE_VERSION,
+        "status": "extracting",
+        "items": [],
+        "extracting_since": datetime.now(timezone.utc).isoformat(),
+    }
+    db.add(doc)
+    db.commit()
+
+    background_tasks.add_task(_run_keyword_extraction_background, doc.id)
+    return DocumentKeywordsOut(
+        items=[], cached=False, content_sha256=content_sha256, status="extracting"
+    )
 
 
 async def _embed_with_verification(
@@ -400,7 +453,6 @@ async def _process_document_upload(
     chapter_id: uuid.UUID,
     file_bytes: bytes,
     original_filename: str,
-    content_type: str,
 ) -> None:
     """
     Background task: upload the file to AnythingLLM, embed it into the teacher
@@ -466,18 +518,6 @@ async def _process_document_upload(
         logger.info(
             "Document embedded successfully: doc_id=%s slug=%s", doc_id, teacher_slug
         )
-
-        # ── 2b. Keyword extraction (file-bytes → Chat Completions) ─────────────
-        # Runs after embed commit. Failure is logged and never blocks fan-out.
-        try:
-            from document_keywords import extract_and_cache_keywords
-
-            await extract_and_cache_keywords(doc, file_bytes, content_type, db)
-        except Exception:
-            logger.exception(
-                "Keyword extraction failed for doc_id=%s — student fan-out continues",
-                doc_id,
-            )
 
         # ── 3. Best-effort fan-out to existing student workspaces ─────────────
         student_workspaces = db.scalars(
@@ -565,7 +605,6 @@ async def upload_chapter_document(
         chapter_id,
         file_bytes,
         file.filename,
-        file.content_type,
     )
 
     return doc
