@@ -216,9 +216,9 @@ export default function LessonPlanPage({
     onSuccess: (res) => {
       hydratePlanState(res.data);
       qc.invalidateQueries({ queryKey: ["lesson-plan", courseId, chapterId] });
-      message.success("已建立教案");
+      message.success("Lesson plan created");
     },
-    onError: () => message.error("無法建立教案"),
+    onError: () => message.error("Failed to create lesson plan"),
   });
 
   const saveMutation = useMutation({
@@ -243,9 +243,9 @@ export default function LessonPlanPage({
       hydratePlanState(res.data);
       qc.invalidateQueries({ queryKey: ["lesson-plan", courseId, chapterId] });
       qc.invalidateQueries({ queryKey: ["lesson-plan-versions", courseId, chapterId] });
-      message.success("已儲存");
+      message.success("Saved");
     },
-    onError: () => message.error("儲存失敗"),
+    onError: () => message.error("Save failed"),
   });
 
   const aiGenerateMutation = useMutation({
@@ -264,9 +264,9 @@ export default function LessonPlanPage({
     onSuccess: (res) => {
       hydratePlanState(res.data);
       qc.invalidateQueries({ queryKey: ["lesson-plan-versions", courseId, chapterId] });
-      message.success("AI 已產生教案");
+      message.success("Lesson plan generated");
     },
-    onError: () => message.error("AI 產生失敗"),
+    onError: () => message.error("Generation failed"),
   });
 
   const restoreMutation = useMutation({
@@ -275,10 +275,10 @@ export default function LessonPlanPage({
     onSuccess: (res) => {
       hydratePlanState(res.data);
       qc.invalidateQueries({ queryKey: ["lesson-plan-versions", courseId, chapterId] });
-      message.success("已還原版本");
+      message.success("Version restored");
       setHistoryOpen(false);
     },
-    onError: () => message.error("還原失敗"),
+    onError: () => message.error("Restore failed"),
   });
 
   const regenerateSectionMutation = useMutation({
@@ -304,9 +304,9 @@ export default function LessonPlanPage({
         const base = prev ?? currentContent;
         return base.replace(vars.original_section, res.data.content);
       });
-      message.success("已重寫選取段落");
+      message.success("Selected section rewritten");
     },
-    onError: () => message.error("重寫失敗"),
+    onError: () => message.error("Rewrite failed"),
   });
 
   const clearContentMutation = useMutation({
@@ -320,19 +320,19 @@ export default function LessonPlanPage({
       hydratePlanState(res.data);
       qc.invalidateQueries({ queryKey: ["lesson-plan", courseId, chapterId] });
       qc.invalidateQueries({ queryKey: ["lesson-plan-versions", courseId, chapterId] });
-      message.success("已清空教案內容");
+      message.success("Lesson plan content cleared");
     },
-    onError: () => message.error("清空失敗"),
+    onError: () => message.error("Clear failed"),
   });
 
   const deletePlanMutation = useMutation({
     mutationFn: () => lessonPlansApi.delete(courseId, chapterId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lesson-plan", courseId, chapterId] });
-      message.success("已刪除教案");
+      message.success("Lesson plan deleted");
       router.push(chapterHref);
     },
-    onError: () => message.error("刪除失敗"),
+    onError: () => message.error("Delete failed"),
   });
 
   const deleteVersionMutation = useMutation({
@@ -340,9 +340,9 @@ export default function LessonPlanPage({
       lessonPlansApi.deleteVersion(courseId, chapterId, versionId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["lesson-plan-versions", courseId, chapterId] });
-      message.success("已刪除版本");
+      message.success("Version deleted");
     },
-    onError: () => message.error("刪除版本失敗"),
+    onError: () => message.error("Delete version failed"),
   });
 
   const hydratePlanState = (next: LessonPlan) => {
@@ -376,7 +376,7 @@ export default function LessonPlanPage({
     },
     onError: () => {
       setSyncStatus("error");
-      message.error("設定同步失敗");
+      message.error("Settings sync failed");
     },
   });
 
@@ -464,10 +464,10 @@ export default function LessonPlanPage({
     const run = () => aiGenerateMutation.mutateAsync();
     if (currentContent.trim()) {
       modal.confirm({
-        title: "確認覆寫？",
-        content: "目前已有內容，AI 產生會取代現有教案文字。",
-        okText: "產生",
-        cancelText: "取消",
+        title: "Overwrite existing content?",
+        content: "There is existing content. AI generation will replace the current lesson plan text.",
+        okText: "Generate",
+        cancelText: "Cancel",
         onOk: () => run(),
       });
     } else {
@@ -486,7 +486,7 @@ export default function LessonPlanPage({
       setTitle(template.name);
     }
     setTemplateOpen(false);
-    message.success("已套用範本");
+    message.success("Template applied");
   };
 
   const handlePreviewVersion = async (versionId: string) => {
@@ -494,28 +494,28 @@ export default function LessonPlanPage({
       const { data } = await lessonPlansApi.getVersion(courseId, chapterId, versionId);
       setPreviewVersion(data);
     } catch {
-      message.error("無法載入版本內容");
+      message.error("Failed to load version content");
     }
   };
 
   const handleClearContent = () => {
     modal.confirm({
-      title: "清空教案內容？",
-      content: "會移除正文並將右側設定重設為預設；教案仍保留，可重新編輯。",
-      okText: "清空",
+      title: "Clear lesson plan content?",
+      content: "This will remove the content and reset the right-panel settings to defaults. The lesson plan record will remain and can be re-edited.",
+      okText: "Clear",
       okType: "danger",
-      cancelText: "取消",
+      cancelText: "Cancel",
       onOk: () => clearContentMutation.mutateAsync(),
     });
   };
 
   const handleDeletePlan = () => {
     modal.confirm({
-      title: "刪除整份教案？",
-      content: "此章節的教案與所有版本紀錄將一併刪除，無法復原。",
-      okText: "刪除",
+      title: "Delete entire lesson plan?",
+      content: "The lesson plan and all version history for this chapter will be permanently deleted.",
+      okText: "Delete",
       okType: "danger",
-      cancelText: "取消",
+      cancelText: "Cancel",
       onOk: () => deletePlanMutation.mutateAsync(),
     });
   };
@@ -532,7 +532,7 @@ export default function LessonPlanPage({
       anchor.remove();
       window.URL.revokeObjectURL(url);
     } catch {
-      message.error("匯出 PDF 失敗");
+      message.error("Export PDF failed");
     }
   };
 
@@ -544,10 +544,10 @@ export default function LessonPlanPage({
     if (planQuery.isError || !plan) {
       return (
         <div>
-          <Title level={3}>教案</Title>
+          <Title level={3}>Lesson Plan</Title>
           <Empty
             style={{ marginTop: 24 }}
-            description="教案尚未發佈，或此章節尚未建立教案。"
+            description="This lesson plan has not been published, or no plan exists for this chapter."
           />
         </div>
       );
@@ -558,7 +558,7 @@ export default function LessonPlanPage({
           <Title level={3} style={{ marginTop: 0 }}>
             {plan.title}
           </Title>
-          <Text type="secondary">已發佈教案（唯讀）</Text>
+          <Text type="secondary">Published lesson plan (read-only)</Text>
           <Card style={{ marginTop: 16 }}>
             <MarkdownRenderer content={plan.content} />
           </Card>
@@ -567,8 +567,8 @@ export default function LessonPlanPage({
     }
     return (
       <div>
-        <Title level={3}>教案</Title>
-        <Empty description="教案尚未發佈。" />
+        <Title level={3}>Lesson Plan</Title>
+        <Empty description="Lesson plan not yet published." />
       </div>
     );
   }
@@ -578,22 +578,22 @@ export default function LessonPlanPage({
   return (
     <div>
       <Title level={3} style={{ marginTop: 0, marginBottom: 8 }}>
-        教案編輯器
+        Lesson Plan Editor
       </Title>
       <Text type="secondary">
-        每個章節一份教案。左邊編輯、右邊即時預覽（同寬）；右側為 AI 與選填設定。
+        One lesson plan per chapter. Edit on the left, live preview on the right; AI and optional settings on the right panel.
       </Text>
 
       <div style={{ marginTop: 16 }}>
         {planNotFound ? (
           <Card>
-            <Empty description="此章節尚未建立教案。">
+            <Empty description="No lesson plan found for this chapter.">
               <Button
                 type="primary"
                 loading={createMutation.isPending}
                 onClick={() => createMutation.mutate()}
               >
-                建立教案
+                Create Lesson Plan
               </Button>
             </Empty>
           </Card>
@@ -621,10 +621,10 @@ export default function LessonPlanPage({
                 showIcon
                 message={
                   docsPending
-                    ? "仍有教材正在處理，完成後 AI 會更能對準你的檔案。"
+                    ? "Some materials are still processing. AI generation will be more accurate once they are ready."
                     : hasUploadedDocs
-                      ? "章節教材已就緒，AI 會優先使用上傳內容。"
-                      : "尚未上傳章節教材；建議先於章節頁上傳檔案再產生教案。"
+                      ? "Chapter materials are ready. AI will prioritise your uploaded content."
+                      : "No chapter materials uploaded. Consider uploading files on the chapter page before generating."
                 }
               />
             )}
@@ -632,12 +632,12 @@ export default function LessonPlanPage({
             <Row gutter={[16, 16]} align="stretch">
               <Col xs={aiSidebarCollapsed ? 22 : 24} lg={aiSidebarCollapsed ? 23 : 16}>
                 <Card
-                  title="教案內容"
+                  title="Lesson Plan Content"
                   style={{ minHeight: "70vh" }}
                   styles={{ body: { minHeight: "calc(70vh - 57px)" } }}
                 >
                   <Paragraph type="secondary" style={{ marginBottom: 8 }}>
-                    左側編輯、右側即時預覽（同寬）。選取文字可浮動「AI 重寫」。
+                    Edit on the left, live preview on the right. Select text to float the AI Rewrite toolbar.
                   </Paragraph>
                   <Row gutter={[16, 16]} align="stretch">
                     <Col xs={24} md={12} style={{ display: "flex" }}>
@@ -660,6 +660,22 @@ export default function LessonPlanPage({
                             })
                           }
                         />
+                        {regenerateSectionMutation.isPending && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              inset: 0,
+                              background: "rgba(255, 255, 255, 0.65)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              zIndex: 10,
+                              borderRadius: 8,
+                            }}
+                          >
+                            <Spin size="large" tip="Rewriting..." />
+                          </div>
+                        )}
                       </div>
                     </Col>
                     <Col xs={24} md={12} style={{ display: "flex" }}>
@@ -675,7 +691,7 @@ export default function LessonPlanPage({
                         }}
                       >
                         <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
-                          即時預覽
+                          Live Preview
                         </Text>
                         <MarkdownRenderer content={currentContent} />
                       </div>
@@ -695,11 +711,11 @@ export default function LessonPlanPage({
                       paddingTop: 8,
                     }}
                   >
-                    <Tooltip title="展開 AI 設定">
-                      <Button
-                        type="default"
-                        aria-label="展開 AI 設定"
-                        icon={<MenuUnfoldOutlined />}
+                     <Tooltip title="Expand AI settings">
+                       <Button
+                         type="default"
+                         aria-label="Expand AI settings"
+                         icon={<MenuUnfoldOutlined />}
                         onClick={() => setAiSidebarCollapsed(false)}
                         style={{
                           minWidth: 36,
@@ -731,23 +747,23 @@ export default function LessonPlanPage({
                           <>
                             <Spin size="small" />
                             <Text type="secondary" style={{ fontSize: 13 }}>
-                              同步中…
+                              Syncing...
                             </Text>
                           </>
                         ) : syncStatus === "synced" ? (
                           <>
                             <CheckCircleOutlined style={{ color: "#52c41a" }} />
                             <Text type="secondary" style={{ fontSize: 13 }}>
-                              已同步
+                              Synced
                             </Text>
                           </>
                         ) : syncStatus === "error" ? (
                           <Text type="danger" style={{ fontSize: 13 }}>
-                            同步失敗
+                            Sync failed
                           </Text>
                         ) : (
                           <Text type="secondary" style={{ fontSize: 13 }}>
-                            設定會自動儲存
+                            Settings auto-saved
                           </Text>
                         )}
                       </Space>
@@ -757,7 +773,7 @@ export default function LessonPlanPage({
                         icon={<MenuFoldOutlined />}
                         onClick={() => setAiSidebarCollapsed(true)}
                       >
-                        收合
+                        Collapse
                       </Button>
                     </div>
                     <LessonPlanMaterialsScope
@@ -767,7 +783,10 @@ export default function LessonPlanPage({
                       selectedDocumentIds={selectedDocumentIds}
                       onDocumentSelectionChange={setSelectedDocumentIds}
                       selectedKeywords={selectedFocusKeywords}
-                      onKeywordSelectionChange={setSelectedFocusKeywords}
+                      onKeywordSelectionChange={(keywords) => {
+                        setSelectedFocusKeywords(keywords);
+                        setAiFocus(keywords.join(", "));
+                      }}
                     />
                     <LessonPlanAiSettings
                       outputLanguage={outputLanguage}
@@ -785,7 +804,7 @@ export default function LessonPlanPage({
                         loading={aiGenerateMutation.isPending}
                         onClick={handleAIGenerate}
                       >
-                        AI 產生
+                        Generate with AI
                       </Button>
                     </div>
                   </div>
@@ -822,7 +841,7 @@ export default function LessonPlanPage({
 
       <Modal
         open={!!previewVersion}
-        title={previewVersion ? `預覽 v${previewVersion.version_number}` : "預覽"}
+        title={previewVersion ? `Preview v${previewVersion.version_number}` : "Preview"}
         footer={null}
         onCancel={() => setPreviewVersion(null)}
         width={860}

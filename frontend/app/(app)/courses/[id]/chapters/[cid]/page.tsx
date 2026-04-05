@@ -350,6 +350,7 @@ export default function ChapterDetailPage({
     queryKey: ["chapter", courseId, chapterId],
     queryFn: () => chaptersApi.get(courseId, chapterId).then((r) => r.data),
   });
+
   const lessonPlanQuery = useQuery({
     queryKey: ["lesson-plan", courseId, chapterId],
     queryFn: () => lessonPlansApi.get(courseId, chapterId).then((r) => r.data),
@@ -455,7 +456,6 @@ export default function ChapterDetailPage({
       await chaptersApi.uploadDocument(courseId, chapterId, formData);
       message.success(`${file.name} saved — embedding in background…`);
       refetchDocs();
-      qc.invalidateQueries({ queryKey: ["chapter-doc-keywords", courseId, chapterId] });
     } catch {
       message.error(`Failed to upload ${file.name}`);
     } finally {
@@ -557,29 +557,29 @@ export default function ChapterDetailPage({
       {isTeacher && (
         <Card
           style={{ marginBottom: 24 }}
-          title="教案"
+          title="Lesson Plan"
           extra={
             <Link href={`/courses/${courseId}/chapters/${chapterId}/lesson-plan`}>
               <Button type="primary" icon={<EditOutlined />}>
-                開啟編輯器
+                Open Editor
               </Button>
             </Link>
           }
         >
           <Space>
-            <Text type="secondary">狀態：</Text>
+            <Text type="secondary">Status:</Text>
             {lessonPlanQuery.isLoading ? (
-              <Tag color="default">載入中</Tag>
+              <Tag color="default">Loading</Tag>
             ) : lessonPlanQuery.isError ? (
-              <Tag color="orange">尚未建立</Tag>
+              <Tag color="orange">Not created</Tag>
             ) : (
               <Tag color={lessonPlanQuery.data?.status === "published" ? "green" : "blue"}>
                 {lessonPlanQuery.data?.status === "draft"
-                  ? "草稿"
+                  ? "Draft"
                   : lessonPlanQuery.data?.status === "published"
-                    ? "已發佈"
+                    ? "Published"
                     : lessonPlanQuery.data?.status === "archived"
-                      ? "已封存"
+                      ? "Archived"
                       : (lessonPlanQuery.data?.status ?? "—")}
               </Tag>
             )}
@@ -588,19 +588,19 @@ export default function ChapterDetailPage({
       )}
 
       {!isTeacher && (
-        <Card style={{ marginBottom: 24 }} title="教案">
+        <Card style={{ marginBottom: 24 }} title="Lesson Plan">
           {lessonPlanQuery.isLoading ? (
-            <Tag color="default">載入中</Tag>
+            <Tag color="default">Loading</Tag>
           ) : lessonPlanQuery.isError ? (
-            <Text type="secondary">老師尚未發佈教案，或此章節尚未建立教案。</Text>
+            <Text type="secondary">The teacher has not published a lesson plan, or no plan exists for this chapter.</Text>
           ) : lessonPlanQuery.data?.status === "published" ? (
             <Link href={`/courses/${courseId}/chapters/${chapterId}/lesson-plan`}>
               <Button type="primary" icon={<FileTextOutlined />}>
-                查看教案
+                View Lesson Plan
               </Button>
             </Link>
           ) : (
-            <Text type="secondary">教案尚未發佈。</Text>
+            <Text type="secondary">Lesson plan not yet published.</Text>
           )}
         </Card>
       )}
