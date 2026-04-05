@@ -1,3 +1,5 @@
+# After changing backend/Dockerfile or backend/requirements.txt, rebuild so every
+# machine gets the same image: docker compose build --no-cache backend
 services:
   backend:
     build:
@@ -13,8 +15,10 @@ services:
       - ./backend:/app
       - ./backend/uploads:/app/uploads
     depends_on:
-      - postgres
-      - noteai-anythingllm
+      postgres:
+        condition: service_healthy
+      noteai-anythingllm:
+        condition: service_started
     networks:
       - noteai_network
 
@@ -47,6 +51,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U noteai -d noteai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - noteai_network
 

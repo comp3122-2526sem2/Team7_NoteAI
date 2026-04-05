@@ -17,6 +17,14 @@ DELETE /prompts/assignment-feedback
 GET    /prompts/syllabus-generation
 PUT    /prompts/syllabus-generation
 DELETE /prompts/syllabus-generation
+
+GET    /prompts/lesson-plan-generation
+PUT    /prompts/lesson-plan-generation
+DELETE /prompts/lesson-plan-generation
+
+GET    /prompts/lesson-plan-section
+PUT    /prompts/lesson-plan-section
+DELETE /prompts/lesson-plan-section
 """
 
 from __future__ import annotations
@@ -30,9 +38,13 @@ from deps import CurrentUser, DbDep, TeacherUser
 from models import (
     AssignmentFeedbackPrompt,
     ChapterPerformancePrompt,
+    LessonPlanGenerationPrompt,
+    LessonPlanSectionPrompt,
     SyllabusGenerationPrompt,
     DEFAULT_ASSIGNMENT_FEEDBACK_PROMPT,
     DEFAULT_CHAPTER_PERFORMANCE_PROMPT,
+    DEFAULT_LESSON_PLAN_GENERATION_PROMPT,
+    DEFAULT_LESSON_PLAN_SECTION_PROMPT,
     DEFAULT_SYLLABUS_GENERATION_PROMPT,
 )
 from schemas import PromptOut, PromptUpdate
@@ -121,3 +133,45 @@ def put_syllabus_generation_prompt(body: PromptUpdate, _: TeacherUser, db: DbDep
 @prompts_router.delete("/syllabus-generation")
 def delete_syllabus_generation_prompt(_: TeacherUser, db: DbDep):
     return _delete_singleton(db, SyllabusGenerationPrompt)
+
+
+# ── Lesson-plan-generation prompt ──────────────────────────────────────────────
+
+@prompts_router.get("/lesson-plan-generation", response_model=PromptOut)
+def get_lesson_plan_generation_prompt(_: CurrentUser, db: DbDep):
+    return _get_singleton(
+        db,
+        LessonPlanGenerationPrompt,
+        DEFAULT_LESSON_PLAN_GENERATION_PROMPT,
+    )
+
+
+@prompts_router.put("/lesson-plan-generation", response_model=PromptOut)
+def put_lesson_plan_generation_prompt(body: PromptUpdate, _: TeacherUser, db: DbDep):
+    return _put_singleton(db, LessonPlanGenerationPrompt, body)
+
+
+@prompts_router.delete("/lesson-plan-generation")
+def delete_lesson_plan_generation_prompt(_: TeacherUser, db: DbDep):
+    return _delete_singleton(db, LessonPlanGenerationPrompt)
+
+
+# ── Lesson-plan-section prompt ─────────────────────────────────────────────────
+
+@prompts_router.get("/lesson-plan-section", response_model=PromptOut)
+def get_lesson_plan_section_prompt(_: CurrentUser, db: DbDep):
+    return _get_singleton(
+        db,
+        LessonPlanSectionPrompt,
+        DEFAULT_LESSON_PLAN_SECTION_PROMPT,
+    )
+
+
+@prompts_router.put("/lesson-plan-section", response_model=PromptOut)
+def put_lesson_plan_section_prompt(body: PromptUpdate, _: TeacherUser, db: DbDep):
+    return _put_singleton(db, LessonPlanSectionPrompt, body)
+
+
+@prompts_router.delete("/lesson-plan-section")
+def delete_lesson_plan_section_prompt(_: TeacherUser, db: DbDep):
+    return _delete_singleton(db, LessonPlanSectionPrompt)

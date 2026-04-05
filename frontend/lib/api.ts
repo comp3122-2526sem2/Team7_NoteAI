@@ -160,6 +160,14 @@ export const chaptersApi = {
     ),
   deleteDocument: (courseId: string, chapterId: string, docId: string) =>
     api.delete(`/courses/${courseId}/chapters/${chapterId}/documents/${docId}`),
+  getDocumentKeywords: (courseId: string, chapterId: string, docId: string) =>
+    api.get<DocumentKeywordsOut>(
+      `/courses/${courseId}/chapters/${chapterId}/documents/${docId}/keywords`
+    ),
+  refreshDocumentKeywords: (courseId: string, chapterId: string, docId: string) =>
+    api.post<DocumentKeywordsOut>(
+      `/courses/${courseId}/chapters/${chapterId}/documents/${docId}/keywords/refresh`
+    ),
   getChapterPerformance: (courseId: string, chapterId: string) =>
     api.get<ChapterStudentPerformance[]>(`/courses/${courseId}/chapters/${chapterId}/performance`),
   getStudentChapterPerformance: (courseId: string, studentId: string) =>
@@ -174,6 +182,119 @@ export const chaptersApi = {
     api.get<{ history: ChatMessage[] }>(`/courses/${courseId}/chapters/${chapterId}/threads/${threadId}/history`),
   threadStreamUrl: (courseId: string, chapterId: string, threadId: string) =>
     `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/courses/${courseId}/chapters/${chapterId}/threads/${threadId}/stream`,
+};
+
+// ── Lesson Plans ──────────────────────────────────────────────────────────────
+export const lessonPlansApi = {
+  get: (courseId: string, chapterId: string) =>
+    api.get<LessonPlan>(`/courses/${courseId}/chapters/${chapterId}/lesson-plan`),
+  create: (
+    courseId: string,
+    chapterId: string,
+    payload: { title: string; config?: LessonPlanConfig; template_id?: string }
+  ) =>
+    api.post<LessonPlan>(
+      `/courses/${courseId}/chapters/${chapterId}/lesson-plan`,
+      payload
+    ),
+  update: (
+    courseId: string,
+    chapterId: string,
+    payload: {
+      title?: string;
+      content?: string;
+      config?: LessonPlanConfig;
+      css_style?: string;
+      status?: LessonPlanStatus;
+      /** When true, server persists without appending a version snapshot (debounced settings sync). */
+      skip_version?: boolean;
+    }
+  ) =>
+    api.put<LessonPlan>(
+      `/courses/${courseId}/chapters/${chapterId}/lesson-plan`,
+      payload
+    ),
+  delete: (courseId: string, chapterId: string) =>
+    api.delete(`/courses/${courseId}/chapters/${chapterId}/lesson-plan`),
+  aiGenerate: (
+    courseId: string,
+    chapterId: string,
+    payload?: {
+      instruction?: string;
+      output_language?: LessonPlanOutputLanguage;
+      style_preset?: LessonPlanStylePreset;
+      document_ids?: string[];
+      focus_keywords?: string[];
+    }
+  ) =>
+    api.post<LessonPlan>(
+      `/courses/${courseId}/chapters/${chapterId}/lesson-plan/ai-generate`,
+      payload ?? {}
+    ),
+  aiRegenerateSection: (
+    courseId: string,
+    chapterId: string,
+    payload: {
+      original_section: string;
+      instruction: string;
+      context_config?: LessonPlanConfig;
+      output_language?: LessonPlanOutputLanguage;
+      style_preset?: LessonPlanStylePreset;
+    }
+  ) =>
+    api.post<{ content: string }>(
+      `/courses/${courseId}/chapters/${chapterId}/lesson-plan/ai-regenerate-section`,
+      payload
+    ),
+  listVersions: (courseId: string, chapterId: string) =>
+    api.get<LessonPlanVersion[]>(
+      `/courses/${courseId}/chapters/${chapterId}/lesson-plan/versions`
+    ),
+  getVersion: (courseId: string, chapterId: string, versionId: string) =>
+    api.get<LessonPlanVersionDetail>(
+      `/courses/${courseId}/chapters/${chapterId}/lesson-plan/versions/${versionId}`
+    ),
+  restoreVersion: (courseId: string, chapterId: string, versionId: string) =>
+    api.post<LessonPlan>(
+      `/courses/${courseId}/chapters/${chapterId}/lesson-plan/versions/${versionId}/restore`
+    ),
+  deleteVersion: (courseId: string, chapterId: string, versionId: string) =>
+    api.delete(
+      `/courses/${courseId}/chapters/${chapterId}/lesson-plan/versions/${versionId}`
+    ),
+  exportPdf: (courseId: string, chapterId: string) =>
+    api.get<Blob>(
+      `/courses/${courseId}/chapters/${chapterId}/lesson-plan/export-pdf`,
+      { responseType: "blob" }
+    ),
+};
+
+// ── Lesson Plan Templates ─────────────────────────────────────────────────────
+export const lessonPlanTemplatesApi = {
+  list: () => api.get<LessonPlanTemplate[]>("/lesson-plan-templates"),
+  get: (templateId: string) =>
+    api.get<LessonPlanTemplate>(`/lesson-plan-templates/${templateId}`),
+  create: (payload: {
+    name: string;
+    description?: string;
+    content: string;
+    default_config?: LessonPlanConfig;
+    template_type?: LessonPlanTemplateType;
+    school_id?: string;
+  }) => api.post<LessonPlanTemplate>("/lesson-plan-templates", payload),
+  update: (
+    templateId: string,
+    payload: {
+      name?: string;
+      description?: string;
+      content?: string;
+      default_config?: LessonPlanConfig;
+      template_type?: LessonPlanTemplateType;
+      school_id?: string;
+      is_active?: boolean;
+    }
+  ) => api.put<LessonPlanTemplate>(`/lesson-plan-templates/${templateId}`, payload),
+  delete: (templateId: string) => api.delete(`/lesson-plan-templates/${templateId}`),
 };
 
 // ── Documents ─────────────────────────────────────────────────────────────────
@@ -363,6 +484,12 @@ export interface Submission {
   updated_at: string;
 }
 
+export interface DocumentKeywordsOut {
+  items: string[];
+  cached: boolean;
+  content_sha256: string;
+}
+
 export interface Document {
   id: string;
   uploaded_by: string;
@@ -395,6 +522,59 @@ export interface ChapterThread {
   user_id: string;
   thread_slug: string;
   name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type LessonPlanStatus = "draft" | "published" | "archived";
+export type LessonPlanOutputLanguage = "zh" | "en";
+export type LessonPlanStylePreset =
+  | "balanced"
+  | "activity_heavy"
+  | "lecture_focus"
+  | "exam_prep"
+  | "public_lesson";
+export type LessonPlanTemplateType = "system" | "school" | "teacher";
+export type LessonPlanConfig = Record<string, unknown>;
+
+export interface LessonPlan {
+  id: string;
+  chapter_id: string;
+  course_id: string;
+  title: string;
+  content: string;
+  config?: LessonPlanConfig;
+  css_style?: string;
+  status: LessonPlanStatus;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LessonPlanVersion {
+  id: string;
+  lesson_plan_id: string;
+  version_number: number;
+  saved_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LessonPlanVersionDetail extends LessonPlanVersion {
+  snapshot_content: string;
+  snapshot_config?: LessonPlanConfig;
+}
+
+export interface LessonPlanTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  content: string;
+  default_config?: LessonPlanConfig;
+  template_type: LessonPlanTemplateType;
+  school_id?: string;
+  created_by?: string;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }

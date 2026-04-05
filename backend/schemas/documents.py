@@ -4,6 +4,12 @@ from pydantic import BaseModel, ConfigDict
 from models.document import ConversionStatus, DocumentType
 
 
+class DocumentKeywordsOut(BaseModel):
+    items: list[str]
+    cached: bool
+    content_sha256: str
+
+
 class DocumentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

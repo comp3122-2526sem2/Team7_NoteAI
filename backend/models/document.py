@@ -1,9 +1,9 @@
 import enum
 import uuid
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from sqlalchemy import Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
@@ -52,6 +52,8 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     original_file_type: Mapped[str] = mapped_column(String(20), nullable=False)
     original_file_path: Mapped[str] = mapped_column(String(512), nullable=False)
     converted_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    #: Cached keyword candidates: { "content_sha256", "items": [...], "updated_at" } — see document_keywords.py
+    keyword_cache: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     css_style: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ai_format_feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     conversion_status: Mapped[ConversionStatus] = mapped_column(

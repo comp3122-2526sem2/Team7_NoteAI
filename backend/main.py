@@ -9,6 +9,8 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
 
+from sqlalchemy import text
+
 from anythingllm import get_client
 from database import engine
 from models import Base
@@ -18,6 +20,8 @@ from routers import (
     chapters_router,
     courses_router,
     documents_router,
+    lesson_plan_templates_router,
+    lesson_plans_router,
     progress_router,
     prompts_router,
     users_router,
@@ -27,6 +31,10 @@ from routers import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    with engine.begin() as conn:
+        conn.execute(
+            text("ALTER TABLE document ADD COLUMN IF NOT EXISTS keyword_cache JSONB")
+        )
     yield
     await get_client().close()
 
@@ -49,6 +57,8 @@ app.include_router(assignments_router)
 app.include_router(documents_router)
 app.include_router(progress_router)
 app.include_router(prompts_router)
+app.include_router(lesson_plans_router)
+app.include_router(lesson_plan_templates_router)
 
 
 @app.get("/health", tags=["Health"])

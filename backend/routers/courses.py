@@ -239,6 +239,24 @@ def _validate_syllabus_file(file_bytes: bytes, content_type: str) -> None:
 
 # ── Syllabus helpers ───────────────────────────────────────────────────────────
 
+# Bound syllabus size when embedded in other LLM prompts (e.g. lesson-plan generation).
+_MAX_SYLLABUS_FOR_PROMPT_CHARS = 24_000
+
+
+async def _condense_for_prompt(syllabus: str) -> str:
+    """
+    Trim syllabus markdown for use inside another model prompt (token / context limits).
+    Does not call an LLM — only truncates with a clear suffix when needed.
+    """
+    text = (syllabus or "").strip()
+    if len(text) <= _MAX_SYLLABUS_FOR_PROMPT_CHARS:
+        return text
+    return (
+        text[:_MAX_SYLLABUS_FOR_PROMPT_CHARS]
+        + "\n\n[... syllabus truncated for prompt size ...]"
+    )
+
+
 async def _call_llm_with_file(
     file_bytes: bytes,
     content_type: str,

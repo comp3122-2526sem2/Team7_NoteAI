@@ -54,7 +54,7 @@ function BasicInfoStep({
         <TextArea rows={4} placeholder="A short summary of what students will learn in this course" />
       </Form.Item>
       <Form.Item style={{ marginBottom: 0, marginTop: 8 }}>
-        <Button type="primary" htmlType="submit" size="large" loading={loading} icon={<ArrowRightOutlined />} iconPosition="end">
+        <Button type="primary" htmlType="submit" size="large" loading={loading} icon={<ArrowRightOutlined />} iconPlacement="end">
           Create &amp; Continue
         </Button>
       </Form.Item>
@@ -308,8 +308,8 @@ export default function NewCoursePage() {
         current={step}
         style={{ marginBottom: 32 }}
         items={[
-          { title: "Basic Info", description: "Name & description" },
-          { title: "Syllabus", description: "Manual or AI-generated" },
+          { title: "Basic Info", content: "Name & description" },
+          { title: "Syllabus", content: "Manual or AI-generated" },
         ]}
       />
 

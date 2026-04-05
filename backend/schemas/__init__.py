@@ -7,12 +7,18 @@ from .assignments import (
     AssignmentCreate, AssignmentUpdate, AssignmentOut,
     SubmissionCreate, SubmissionGrade, SubmissionOut, SubmissionWithStudentOut,
 )
-from .documents import DocumentOut, DocumentUpdate, AICheckRequest
+from .documents import DocumentOut, DocumentUpdate, DocumentKeywordsOut, AICheckRequest
 from .progress import (
     TopicProgressOut, TopicProgressUpdate,
     AIRecommendationOut, GenerateRecommendationRequest,
 )
 from .prompts import PromptOut, PromptUpdate
+from .lesson_plans import (
+    LessonPlanCreate, LessonPlanUpdate, LessonPlanOut,
+    LessonPlanVersionOut, LessonPlanVersionDetailOut,
+    AiGenerateRequest, AiRegenerateSectionRequest, AiRegenerateSectionOut,
+    LessonPlanTemplateCreate, LessonPlanTemplateUpdate, LessonPlanTemplateOut,
+)
 
 __all__ = [
     "RegisterRequest", "TokenResponse",
@@ -22,8 +28,12 @@ __all__ = [
     "ThreadCreate", "ThreadOut",
     "AssignmentCreate", "AssignmentUpdate", "AssignmentOut",
     "SubmissionCreate", "SubmissionGrade", "SubmissionOut", "SubmissionWithStudentOut",
-    "DocumentOut", "DocumentUpdate", "AICheckRequest",
+    "DocumentOut", "DocumentUpdate", "DocumentKeywordsOut", "AICheckRequest",
     "TopicProgressOut", "TopicProgressUpdate",
     "AIRecommendationOut", "GenerateRecommendationRequest",
     "PromptOut", "PromptUpdate",
+    "LessonPlanCreate", "LessonPlanUpdate", "LessonPlanOut",
+    "LessonPlanVersionOut", "LessonPlanVersionDetailOut",
+    "AiGenerateRequest", "AiRegenerateSectionRequest", "AiRegenerateSectionOut",
+    "LessonPlanTemplateCreate", "LessonPlanTemplateUpdate", "LessonPlanTemplateOut",
 ]
