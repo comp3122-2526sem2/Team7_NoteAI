@@ -11,9 +11,14 @@ from sqlalchemy import select
 from database import SessionLocal
 from deps import AdminUser, CurrentUser, DbDep, TeacherUser
 from models import (
-    Course, CourseStudent, CourseTeacher, Document, StudentUser,
+    Course,
+    CourseStudent,
+    CourseTeacher,
+    Document,
+    StudentUser,
     SyllabusGenerationPrompt,
-    TeacherUser as TeacherModel, UserRole,
+    TeacherUser as TeacherModel,
+    UserRole,
     DEFAULT_SYLLABUS_GENERATION_PROMPT,
 )
 from models.document import ConversionStatus, DocumentType
@@ -29,7 +34,9 @@ from schemas import (
 
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(Path(__file__).parent.parent / "uploads")))
+UPLOAD_DIR = Path(
+    os.getenv("UPLOAD_DIR", str(Path(__file__).parent.parent / "uploads"))
+)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 SYLLABUS_ALLOWED_TYPES: dict[str, str] = {
@@ -39,7 +46,6 @@ SYLLABUS_ALLOWED_TYPES: dict[str, str] = {
     "text/plain": "txt",
     "text/markdown": "md",
 }
-
 
 
 router = APIRouter(prefix="/courses", tags=["Courses"])
@@ -105,6 +111,7 @@ def delete_course(course_id: uuid.UUID, _: AdminUser, db: DbDep):
 
 # ── Students ──────────────────────────────────────────────────────────────────
 
+
 @router.get("/{course_id}/students", response_model=list[UserOut])
 def list_students(course_id: uuid.UUID, _: TeacherUser, db: DbDep):
     _get_course_or_404(course_id, db)
@@ -117,9 +124,13 @@ def list_students(course_id: uuid.UUID, _: TeacherUser, db: DbDep):
 
 
 @router.post("/{course_id}/students", status_code=status.HTTP_201_CREATED)
-def enroll_student(course_id: uuid.UUID, body: EnrollStudentRequest, _: TeacherUser, db: DbDep):
+def enroll_student(
+    course_id: uuid.UUID, body: EnrollStudentRequest, _: TeacherUser, db: DbDep
+):
     _get_course_or_404(course_id, db)
-    student = db.scalar(select(StudentUser).where(StudentUser.student_id == body.student_id))
+    student = db.scalar(
+        select(StudentUser).where(StudentUser.student_id == body.student_id)
+    )
     if not student:
         raise HTTPException(status_code=404, detail="Student not found.")
     existing = db.scalar(
@@ -135,8 +146,12 @@ def enroll_student(course_id: uuid.UUID, body: EnrollStudentRequest, _: TeacherU
     return {"detail": "Student enrolled."}
 
 
-@router.delete("/{course_id}/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
-def unenroll_student(course_id: uuid.UUID, student_id: uuid.UUID, _: TeacherUser, db: DbDep):
+@router.delete(
+    "/{course_id}/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def unenroll_student(
+    course_id: uuid.UUID, student_id: uuid.UUID, _: TeacherUser, db: DbDep
+):
     enrollment = db.scalar(
         select(CourseStudent).where(
             CourseStudent.course_id == course_id,
@@ -151,6 +166,7 @@ def unenroll_student(course_id: uuid.UUID, student_id: uuid.UUID, _: TeacherUser
 
 # ── Teachers ──────────────────────────────────────────────────────────────────
 
+
 @router.get("/{course_id}/teachers", response_model=list[UserOut])
 def list_teachers(course_id: uuid.UUID, _: CurrentUser, db: DbDep):
     _get_course_or_404(course_id, db)
@@ -163,9 +179,13 @@ def list_teachers(course_id: uuid.UUID, _: CurrentUser, db: DbDep):
 
 
 @router.post("/{course_id}/teachers", status_code=status.HTTP_201_CREATED)
-def assign_teacher(course_id: uuid.UUID, body: AssignTeacherRequest, _: AdminUser, db: DbDep):
+def assign_teacher(
+    course_id: uuid.UUID, body: AssignTeacherRequest, _: AdminUser, db: DbDep
+):
     _get_course_or_404(course_id, db)
-    teacher = db.scalar(select(TeacherModel).where(TeacherModel.teacher_id == body.teacher_id))
+    teacher = db.scalar(
+        select(TeacherModel).where(TeacherModel.teacher_id == body.teacher_id)
+    )
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found.")
     existing = db.scalar(
@@ -181,8 +201,12 @@ def assign_teacher(course_id: uuid.UUID, body: AssignTeacherRequest, _: AdminUse
     return {"detail": "Teacher assigned."}
 
 
-@router.delete("/{course_id}/teachers/{teacher_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remove_teacher(course_id: uuid.UUID, teacher_id: uuid.UUID, _: AdminUser, db: DbDep):
+@router.delete(
+    "/{course_id}/teachers/{teacher_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def remove_teacher(
+    course_id: uuid.UUID, teacher_id: uuid.UUID, _: AdminUser, db: DbDep
+):
     assignment = db.scalar(
         select(CourseTeacher).where(
             CourseTeacher.course_id == course_id,
@@ -197,44 +221,28 @@ def remove_teacher(course_id: uuid.UUID, teacher_id: uuid.UUID, _: AdminUser, db
 
 # ── Syllabus validation ────────────────────────────────────────────────────────
 
-_MAX_FILE_SIZE_MB = 20
-_MAX_PDF_PAGES = 50
+_MAX_FILE_SIZE_MB = 30
+# OpenAI allows 50 images per request (one per PDF page); pypdf can undercount by 1.
+# Large PDFs are automatically split and processed in multiple LLM calls.
+_MAX_PDF_PAGES_PER_CHUNK = 49
 
 
 def _validate_syllabus_file(file_bytes: bytes, content_type: str) -> None:
     """
-    Raise HTTPException(400) if the file would be rejected by the LLM.
+            Raise HTTPException(400) if the file cannot be accepted at all.
 
-    Checks:
-      • File size ≤ 20 MB  (all types)
-      • PDF page count ≤ 50  (API limit: one image per page, max 50 images)
+            Checks:
+    _MAX_FILE_SIZE_MB = 30
+    _MAX_PDF_PAGES = 200
     """
     size_mb = len(file_bytes) / (1024 * 1024)
     if size_mb > _MAX_FILE_SIZE_MB:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"File is too large ({size_mb:.1f} MB). "
-                f"Maximum allowed size is {_MAX_FILE_SIZE_MB} MB."
-            ),
+        detail = (
+            f"File is too large ({size_mb:.1f} MB). "
+            f"Maximum allowed size is {_MAX_FILE_SIZE_MB} MB."
         )
-
-    if content_type == "application/pdf":
-        try:
-            from pypdf import PdfReader
-            page_count = len(PdfReader(io.BytesIO(file_bytes)).pages)
-        except Exception as exc:
-            raise HTTPException(status_code=422, detail=f"Could not read PDF: {exc}")
-
-        if page_count > _MAX_PDF_PAGES:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"PDF has {page_count} pages. "
-                    f"Maximum allowed is {_MAX_PDF_PAGES} pages. "
-                    f"Please split the document or reduce it to {_MAX_PDF_PAGES} pages or fewer."
-                ),
-            )
+        logger.warning("Syllabus upload rejected: %s", detail)
+        raise HTTPException(status_code=400, detail=detail)
 
 
 # ── Syllabus helpers ───────────────────────────────────────────────────────────
@@ -298,7 +306,118 @@ async def _call_llm_with_file(
     return resp.choices[0].message.content or ""
 
 
+def _split_pdf(file_bytes: bytes, max_pages: int) -> list[bytes]:
+    """Split a PDF into chunks of at most *max_pages* pages, returning each as bytes."""
+    from pypdf import PdfReader, PdfWriter
+
+    reader = PdfReader(io.BytesIO(file_bytes))
+    total = len(reader.pages)
+    chunks: list[bytes] = []
+    for start in range(0, total, max_pages):
+        writer = PdfWriter()
+        for idx in range(start, min(start + max_pages, total)):
+            writer.add_page(reader.pages[idx])
+        buf = io.BytesIO()
+        writer.write(buf)
+        chunks.append(buf.getvalue())
+    return chunks
+
+
+async def _call_llm_text(prompt: str, system: str, temperature: float = 0.4) -> str:
+    """Text-only LLM call — no file attachment."""
+    from openai_client import get_client as _get_client, get_model as _get_model
+
+    client = _get_client()
+    resp = await client.chat.completions.create(
+        model=_get_model(),
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=temperature,
+    )
+    return resp.choices[0].message.content or ""
+
+
+async def _call_llm_with_large_pdf(
+    file_bytes: bytes,
+    filename: str,
+    prompt: str,
+    system: str,
+    temperature: float = 0.4,
+) -> str:
+    """
+    Process a PDF of any page count.
+
+    • If the PDF fits within _MAX_PDF_PAGES_PER_CHUNK it is sent to the LLM in one shot.
+    • Otherwise the PDF is split into chunks of _MAX_PDF_PAGES_PER_CHUNK pages each.
+      Every chunk is summarised individually (extracting curriculum content), then a
+      final synthesis call combines those partial summaries using the original prompt.
+    """
+    from pypdf import PdfReader
+
+    total_pages = len(PdfReader(io.BytesIO(file_bytes)).pages)
+
+    if total_pages <= _MAX_PDF_PAGES_PER_CHUNK:
+        return await _call_llm_with_file(
+            file_bytes=file_bytes,
+            content_type="application/pdf",
+            filename=filename,
+            prompt=prompt,
+            system=system,
+            temperature=temperature,
+        )
+
+    chunks = _split_pdf(file_bytes, _MAX_PDF_PAGES_PER_CHUNK)
+    logger.info(
+        "PDF '%s' has %d pages — splitting into %d chunks for LLM processing",
+        filename,
+        total_pages,
+        len(chunks),
+    )
+
+    chunk_system = (
+        "You are an expert curriculum analyst. "
+        "Extract and summarise all curriculum-relevant content from this document section: "
+        "topics, learning objectives, assessments, schedule, and any other academic content. "
+        "Be thorough and preserve all important details."
+    )
+
+    chunk_summaries: list[str] = []
+    for i, chunk_bytes in enumerate(chunks):
+        start_page = i * _MAX_PDF_PAGES_PER_CHUNK + 1
+        end_page = min((i + 1) * _MAX_PDF_PAGES_PER_CHUNK, total_pages)
+        chunk_prompt = (
+            f"This is pages {start_page}–{end_page} of {total_pages} "
+            f"from the document '{filename}'. "
+            "Extract and summarise all curriculum-relevant content from these pages."
+        )
+        summary = await _call_llm_with_file(
+            file_bytes=chunk_bytes,
+            content_type="application/pdf",
+            filename=f"{filename} (part {i + 1} of {len(chunks)})",
+            prompt=chunk_prompt,
+            system=chunk_system,
+            temperature=0.3,
+        )
+        chunk_summaries.append(
+            f"### Section {i + 1} (pages {start_page}–{end_page} of {total_pages})\n\n{summary}"
+        )
+        logger.info("Summarised chunk %d/%d for '%s'", i + 1, len(chunks), filename)
+
+    combined = "\n\n".join(chunk_summaries)
+    synthesis_prompt = (
+        f"{prompt}\n\n"
+        f"The document '{filename}' ({total_pages} pages total) was too large to process in "
+        f"one pass and has been pre-processed into {len(chunks)} sections. "
+        f"Use the following extracted content from each section to produce the final output:\n\n"
+        f"{combined}"
+    )
+    return await _call_llm_text(synthesis_prompt, system, temperature)
+
+
 # ── Syllabus background task ───────────────────────────────────────────────────
+
 
 async def _generate_syllabus_bg(
     course_id: uuid.UUID,
@@ -326,14 +445,24 @@ async def _generate_syllabus_bg(
             file_content="",
         ).strip()
 
-        syllabus_md = await _call_llm_with_file(
-            file_bytes=file_bytes,
-            content_type=content_type,
-            filename=filename,
-            prompt=prompt,
-            system="You are an expert curriculum designer. Always respond in markdown.",
-            temperature=0.4,
-        )
+        system = "You are an expert curriculum designer. Always respond in markdown."
+        if content_type == "application/pdf":
+            syllabus_md = await _call_llm_with_large_pdf(
+                file_bytes=file_bytes,
+                filename=filename,
+                prompt=prompt,
+                system=system,
+                temperature=0.4,
+            )
+        else:
+            syllabus_md = await _call_llm_with_file(
+                file_bytes=file_bytes,
+                content_type=content_type,
+                filename=filename,
+                prompt=prompt,
+                system=system,
+                temperature=0.4,
+            )
 
         doc = db.get(Document, doc_id)
         course = db.get(Course, course_id)
@@ -360,12 +489,16 @@ async def _generate_syllabus_bg(
 
 # ── Syllabus endpoints ─────────────────────────────────────────────────────────
 
+
 @router.get("/{course_id}/syllabus", tags=["Syllabus"])
 def get_syllabus(course_id: uuid.UUID, _: CurrentUser, db: DbDep):
     """Return the current AI-generated syllabus for a course (plain markdown string)."""
     course = _get_course_or_404(course_id, db)
     if not course.syllabus:
-        raise HTTPException(status_code=404, detail="No syllabus has been generated for this course yet.")
+        raise HTTPException(
+            status_code=404,
+            detail="No syllabus has been generated for this course yet.",
+        )
     return {"course_id": course_id, "syllabus": course.syllabus}
 
 
@@ -412,7 +545,9 @@ async def upload_syllabus_file(
     save_path.write_bytes(file_bytes)
 
     prompt_row = db.scalar(select(SyllabusGenerationPrompt))
-    prompt_template = prompt_row.prompt if prompt_row else DEFAULT_SYLLABUS_GENERATION_PROMPT
+    prompt_template = (
+        prompt_row.prompt if prompt_row else DEFAULT_SYLLABUS_GENERATION_PROMPT
+    )
 
     doc = Document(
         uploaded_by=current_user.id,
